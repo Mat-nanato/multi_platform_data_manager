@@ -1,0 +1,27 @@
+name: multi_platform_data_manager
+description: "Cross-platform data management app."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  http: ^1.2.2
+  html: ^0.15.0
+  webview_flutter: ^4.2.1
+  logger: ^2.0.2
+  table_calendar: ^3.0.9
+  shared_preferences: ^2.2.2
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

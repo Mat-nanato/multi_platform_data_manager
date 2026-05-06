@@ -1,0 +1,309 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+
+class GatePage extends StatefulWidget {
+  final void Function(String store, String actual, String actualWaste) onEnter;
+
+  const GatePage({super.key, required this.onEnter});
+
+  @override
+  State<GatePage> createState() => _GatePageState();
+}
+
+class _GatePageState extends State<GatePage> {
+  DateTime? selectedDate;
+  String? selectedStore;
+  List<String> availableStores = [];
+
+  final NumberFormat formatter = NumberFormat('#,###');
+
+  final Map<String, TextEditingController> controllers = {
+    '売上': TextEditingController(),
+    '客数': TextEditingController(),
+    '廃棄（原価）': TextEditingController(),
+    'おむすび発注金額': TextEditingController(),
+    '寿司発注金額': TextEditingController(),
+    '定温弁当発注金額': TextEditingController(),
+    'サンドイッチ発注金額': TextEditingController(),
+    'パスタ発注金額': TextEditingController(),
+    'サラダ発注金額': TextEditingController(),
+    '菓子パン発注金額': TextEditingController(),
+    '惣菜パン発注金額': TextEditingController(),
+    '食パンマルチパン発注金額': TextEditingController(),
+    'FF発注金額': TextEditingController(),
+  };
+
+  final List<String> stores = [
+    '東勝山二丁目店',
+    '上杉一丁目店',
+    '仙台木町通一丁目店',
+    '安養寺二丁目店',
+    '利府青山店',
+    '電力ビル店',
+    '中山台店',
+  ];
+
+  final Map<String, List<String>> passwordMap = {
+    "100927": ["全店舗"],
+    "061685": ["東勝山二丁目店"],
+    "061780": ["上杉一丁目店"],
+    "025658": ["仙台木町通一丁目店"],
+    "061987": ["安養寺二丁目店"],
+    "062012": ["利府青山店"],
+    "062219": ["中山台店"],
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showPasswordPopup());
+  }
+
+  Future<void> _loadInitialData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList('history') ?? [];
+
+    if (history.isNotEmpty) {
+      final latest = jsonDecode(history.last);
+      setState(() {
+        selectedDate = latest['date'] != null
+            ? DateTime.parse(latest['date'])
+            : DateTime.now();
+        selectedStore = latest['store'];
+      });
+
+      if (selectedDate != null && selectedStore != null) {
+        _loadDataFor(selectedDate!, selectedStore!);
+      }
+    } else {
+      setState(() {
+        selectedDate = DateTime.now();
+      });
+    }
+  }
+
+  Future<void> _showPasswordPopup() async {
+    String? password;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        TextEditingController controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('パスワード入力'),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            decoration: const InputDecoration(hintText: 'パスワード'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                password = controller.text;
+                if (_validatePassword(password!)) {
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('アクセスできません')),
+                  );
+                }
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+    _setAvailableStores(password!);
+  }
+
+  bool _validatePassword(String password) {
+    return passwordMap.containsKey(password);
+  }
+
+  void _setAvailableStores(String password) {
+    List<String> storesForPassword = passwordMap[password]!;
+
+    setState(() {
+      if (storesForPassword.contains("全店舗")) {
+        availableStores = List.from(stores);
+      } else {
+        availableStores = storesForPassword;
+      }
+      selectedStore = null;
+    });
+  }
+
+  void _formatNumber(TextEditingController controller, String value) {
+    final numeric = value.replaceAll(',', '');
+    if (numeric.isEmpty) return;
+
+    final number = int.tryParse(numeric);
+    if (number == null) return;
+
+    final newText = formatter.format(number);
+
+    controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
+    );
+  }
+
+  String _cleanNumber(String value) {
+    return value.replaceAll(',', '');
+  }
+
+  Future<void> _saveData() async {
+    if (selectedDate == null || selectedStore == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final String actualKey =
+        'actual-${DateFormat('yyyyMMdd').format(selectedDate!)}';
+    final String actualWasteKey =
+        'actualWaste-${DateFormat('yyyyMMdd').format(selectedDate!)}';
+
+    await prefs.setString(actualKey, _cleanNumber(controllers['売上']!.text));
+    await prefs.setString(
+        actualWasteKey, _cleanNumber(controllers['廃棄（原価）']!.text));
+
+    final history = prefs.getStringList('history') ?? [];
+
+    final record = {
+      "date": selectedDate!.toIso8601String(),
+      "store": selectedStore,
+      ...controllers.map(
+        (k, v) => MapEntry(k, _cleanNumber(v.text)),
+      ),
+    };
+
+    history.add(jsonEncode(record));
+    await prefs.setStringList('history', history);
+  }
+
+  Future<void> _loadDataFor(DateTime date, String store) async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList('history') ?? [];
+
+    Map<String, dynamic>? matched;
+    for (final item in history.reversed) {
+      final record = jsonDecode(item);
+      if (record['date'] != null &&
+          record['store'] == store &&
+          DateTime.parse(record['date']).year == date.year &&
+          DateTime.parse(record['date']).month == date.month &&
+          DateTime.parse(record['date']).day == date.day) {
+        matched = record;
+        break;
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      for (final entry in controllers.entries) {
+        final value = matched?[entry.key]?.toString() ?? '';
+        entry.value.text =
+            value.isNotEmpty ? formatter.format(int.tryParse(value) ?? 0) : '';
+      }
+    });
+  }
+
+  Widget _buildInput(String label) {
+    final controller = controllers[label]!;
+    final unit = label == '客数' ? '人' : '円';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          suffixText: unit,
+        ),
+        onChanged: (value) {
+          _formatNumber(controller, value);
+          _saveData();
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    for (final c in controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            CalendarDatePicker(
+              initialDate: selectedDate ?? DateTime.now(),
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2030),
+              onDateChanged: (date) {
+                setState(() {
+                  selectedDate = date;
+                });
+                if (selectedStore != null) {
+                  _loadDataFor(date, selectedStore!);
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+            if (availableStores.isNotEmpty)
+              DropdownButtonFormField<String>(
+                initialValue: selectedStore, // ← value → initialValue
+                hint: const Text('店舗を選択'),
+                items: availableStores.map((store) {
+                  return DropdownMenuItem<String>(
+                    value: store,
+                    child: Text(store),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedStore = value;
+                  });
+                  if (selectedDate != null && value != null) {
+                    _loadDataFor(selectedDate!, value);
+                  }
+                },
+              ),
+            const SizedBox(height: 20),
+            if (selectedStore != null) ...[
+              ...controllers.keys.map((label) => _buildInput(label)),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: () {
+                  if (selectedStore == null) return;
+
+                  final actual = _cleanNumber(controllers['売上']!.text);
+                  final actualWaste = _cleanNumber(controllers['廃棄（原価）']!.text);
+
+                  widget.onEnter(selectedStore!, actual, actualWaste);
+
+                  _saveData();
+                },
+                child: const Text('次へ'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
