@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'tenpodetapage.dart';
-import 'aianalysis_page.dart.dart'; // ← ★追加（さっきの分析ページ）
+import 'aianalysis_page.dart';
 
 final logger = Logger(printer: PrettyPrinter());
 
@@ -43,9 +43,15 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
+
     _webController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..loadRequest(Uri.parse(newProductsUrl));
+      ..loadRequest(Uri.parse('about:blank'));
+
+    // 👇 フリーズ対策：描画後に遅延ロード
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _webController.loadRequest(Uri.parse(newProductsUrl));
+    });
   }
 
   @override
@@ -160,78 +166,64 @@ class _MainPageState extends State<MainPage> {
             flex: 3,
             child: Container(
               color: Colors.black,
-              child: Column(
-                children: [
-                  const SizedBox(height: 40),
-
-                  IconButton(
-                      icon: const Text('📅', style: TextStyle(fontSize: 64)),
-                      onPressed: loadCalendar),
-
-                  const SizedBox(height: 16),
-
-                  IconButton(
-                      icon: const Text('🍙', style: TextStyle(fontSize: 64)),
-                      onPressed: loadNewProducts),
-
-                  const SizedBox(height: 8),
-
-                  IconButton(
-                      icon: const Text('🎉', style: TextStyle(fontSize: 64)),
-                      onPressed: loadCampaigns),
-
-                  const SizedBox(height: 8),
-
-                  IconButton(
-                      icon: const Text('🏷️',
-                          style: TextStyle(fontSize: 64)), // POP風
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 40),
+                    IconButton(
+                        icon: const Text('📅', style: TextStyle(fontSize: 64)),
+                        onPressed: loadCalendar),
+                    const SizedBox(height: 16),
+                    IconButton(
+                        icon: const Text('🍙', style: TextStyle(fontSize: 64)),
+                        onPressed: loadNewProducts),
+                    const SizedBox(height: 8),
+                    IconButton(
+                        icon: const Text('🎉', style: TextStyle(fontSize: 64)),
+                        onPressed: loadCampaigns),
+                    const SizedBox(height: 8),
+                    IconButton(
+                        icon: const Text('🏷️', style: TextStyle(fontSize: 64)),
+                        onPressed: () {
+                          setState(() => showChatInput = !showChatInput);
+                        }),
+                    const SizedBox(height: 8),
+                    IconButton(
+                      icon: const Text('📊', style: TextStyle(fontSize: 64)),
                       onPressed: () {
-                        setState(() => showChatInput = !showChatInput);
-                      }),
-
-                  const SizedBox(height: 8),
-
-                  IconButton(
-                    icon: const Text('📊', style: TextStyle(fontSize: 64)),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const TenpoDataPage(),
-                        ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // 🔥 ここ追加（AI分析ボタン）
-                  IconButton(
-                    icon: const Text('🤖', style: TextStyle(fontSize: 64)),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AiAnalysisPage(),
-                        ),
-                      );
-                    },
-                  ),
-
-                  const Spacer(),
-
-                  IconButton(
-                      icon: const Icon(Icons.arrow_back,
-                          color: Colors.white, size: 40),
-                      onPressed: widget.onBackToGate),
-
-                  const SizedBox(height: 20),
-                ],
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TenpoDataPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    IconButton(
+                      icon: const Text('🤖', style: TextStyle(fontSize: 64)),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AiAnalysisPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    IconButton(
+                        icon: const Icon(Icons.arrow_back,
+                            color: Colors.white, size: 40),
+                        onPressed: widget.onBackToGate),
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
           ),
 
-          /// 右画面（変更なし）
+          /// 右画面
           Expanded(
             flex: 7,
             child: Padding(
@@ -260,8 +252,9 @@ class _MainPageState extends State<MainPage> {
                               child: TextField(
                                 controller: _controller,
                                 decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                    hintText: '作成POPイメージ'),
+                                  border: OutlineInputBorder(),
+                                  hintText: '作成POPイメージ',
+                                ),
                                 onSubmitted: (_) => _sendChat(),
                               ),
                             ),
@@ -281,10 +274,7 @@ class _MainPageState extends State<MainPage> {
                         if (_chatImage != null)
                           Container(
                             margin: const EdgeInsets.only(top: 8),
-                            child: Image.memory(
-                              _chatImage!,
-                              width: 300,
-                            ),
+                            child: Image.memory(_chatImage!, width: 300),
                           ),
                       ],
                     ),
