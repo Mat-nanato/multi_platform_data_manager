@@ -9,7 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
   cupertino_icons: ^1.0.6
+
   http: ^1.2.2
   html: ^0.15.0
   webview_flutter: ^4.2.1
@@ -21,6 +23,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^3.0.0
 
 flutter:

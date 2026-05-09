@@ -15,8 +15,10 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   bool showGate = true;
-  String? selectedStore; // 選択された店舗名を保存
-  Map<String, String>? selectedGateData; // 売上・廃棄まとめて保存
+
+  String? selectedStore;
+
+  Map<String, dynamic>? selectedGateData;
 
   @override
   Widget build(BuildContext context) {
@@ -24,24 +26,35 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       home: showGate
           ? gate_page.GatePage(
-              // GatePage側で渡している store, actual, actualWaste を Map で受け取る
-              onEnter: (store, actual, actualWaste) {
+              onEnter: (
+                store,
+                address,
+                lat,
+                lon,
+                actual,
+                actualWaste,
+              ) {
                 setState(() {
                   selectedStore = store;
+
                   selectedGateData = {
                     'actual': actual,
                     'actualWaste': actualWaste,
+                    'storeAddress': address,
+                    'lat': lat,
+                    'lon': lon,
                   };
-                  showGate = false; // GatePage を閉じる
+
+                  showGate = false;
                 });
               },
             )
           : main_page.MainPage(
-              storeName: selectedStore!, // 選択された店舗名を渡す
-              gateData: selectedGateData, // 売上・廃棄まとめて渡す
+              storeName: selectedStore!,
+              gateData: selectedGateData,
               onBackToGate: () {
                 setState(() {
-                  showGate = true; // 再度 GatePage を表示
+                  showGate = true;
                 });
               },
             ),

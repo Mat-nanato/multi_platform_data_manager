@@ -2,34 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-
-void main() {
-  runApp(const MyApp());
-}
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 final formatter = NumberFormat('#,###');
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '店舗データアプリ',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const TenpoDataPage(),
-    );
-  }
-}
-
 class TenpoDataPage extends StatefulWidget {
-  final String actual; // 実売上
-  final String actualWaste; // 実廃棄
+  final String actual;
+  final String actualWaste;
+  final String storeAddress;
+
+  final double lat;
+  final double lon;
 
   const TenpoDataPage({
     super.key,
+    required this.lat,
+    required this.lon,
     this.actual = '',
     this.actualWaste = '',
+    this.storeAddress = '',
   });
 
   @override
@@ -39,7 +31,7 @@ class TenpoDataPage extends StatefulWidget {
 class _TenpoDataPageState extends State<TenpoDataPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
-
+  Map<String, dynamic> _weatherMap = {};
   String _dateKey(String base) {
     return '$base-${DateFormat('yyyyMMdd').format(_selectedDay)}';
   }
@@ -140,14 +132,16 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
     _addCommaFormat(_actualWasteController);
 
     _loadData().then((_) {
-      // GatePage から渡された値を優先してセット
       if (widget.actual.isNotEmpty) {
         _actualController.text = widget.actual;
       }
+
       if (widget.actualWaste.isNotEmpty) {
         _actualWasteController.text = widget.actualWaste;
       }
     });
+    debugPrint('storeAddress = ${widget.storeAddress}');
+    _loadWeather();
   }
 
   void _addCommaFormat(TextEditingController controller) {
@@ -351,6 +345,52 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
     );
   }
 
+  Future<void> _loadWeather() async {
+    debugPrint('lat=${widget.lat}');
+    debugPrint('lon=${widget.lon}');
+
+    final weatherUrl = 'https://api.open-meteo.com/v1/forecast'
+        '?latitude=${widget.lat}'
+        '&longitude=${widget.lon}'
+        '&daily=temperature_2m_max,temperature_2m_min'
+        '&timezone=Asia%2FTokyo';
+
+    debugPrint(weatherUrl);
+
+    final weatherRes = await http.get(Uri.parse(weatherUrl));
+
+    if (weatherRes.statusCode != 200) {
+      debugPrint('weather error');
+      return;
+    }
+
+    final data = jsonDecode(weatherRes.body);
+
+    final dates = data['daily']['time'];
+    final maxTemps = data['daily']['temperature_2m_max'];
+    final minTemps = data['daily']['temperature_2m_min'];
+
+    Map<String, dynamic> tempMap = {};
+
+    for (int i = 0; i < dates.length; i++) {
+      tempMap[dates[i]] = {
+        'max': maxTemps[i],
+        'min': minTemps[i],
+      };
+    }
+
+    for (int i = 1; i < dates.length; i++) {
+      double diff = maxTemps[i] - maxTemps[i - 1];
+      tempMap[dates[i]]['diff'] = diff;
+    }
+
+    debugPrint(tempMap.toString());
+
+    setState(() {
+      _weatherMap = tempMap;
+    });
+  }
+
   String _formattedDay(DateTime d) =>
       '${d.year}/${d.month}/${d.day}（${_dayLabel(d)}）';
 
@@ -409,11 +449,59 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
               Container(
                 color: Colors.blue[50],
                 child: TableCalendar(
+                  rowHeight: 80,
                   firstDay: DateTime.utc(2020, 1, 1),
                   lastDay: DateTime.utc(2030, 12, 31),
                   focusedDay: _focusedDay,
                   selectedDayPredicate: (d) => isSameDay(_selectedDay, d),
                   availableGestures: AvailableGestures.all,
+                  calendarBuilders: CalendarBuilders(
+                    defaultBuilder: (context, day, focusedDay) {
+                      String key = DateFormat('yyyy-MM-dd').format(day);
+
+                      final weather = _weatherMap[key];
+
+                      return Container(
+                        margin: const EdgeInsets.all(2),
+                        padding: const EdgeInsets.all(2),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '${day.day}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            if (weather != null) ...[
+                              Text(
+                                '↑${weather['max'].round()}°',
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.red,
+                                ),
+                              ),
+                              Text(
+                                '↓${weather['min'].round()}°',
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                              if (weather['diff'] != null)
+                                Text(
+                                  '${weather['diff'] >= 0 ? '+' : ''}${weather['diff'].round()}°',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    color: weather['diff'] >= 0
+                                        ? Colors.orange
+                                        : Colors.cyan,
+                                  ),
+                                ),
+                            ]
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                   onDaySelected: (s, f) async {
                     final prefs = await SharedPreferences.getInstance();
 

@@ -194,7 +194,15 @@ class _MainPageState extends State<MainPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const TenpoDataPage(),
+                            builder: (context) => TenpoDataPage(
+                              actual: widget.gateData?['actual'] ?? '',
+                              actualWaste:
+                                  widget.gateData?['actualWaste'] ?? '',
+                              storeAddress:
+                                  widget.gateData?['storeAddress'] ?? '',
+                              lat: widget.gateData?['lat'] ?? 38.2682,
+                              lon: widget.gateData?['lon'] ?? 140.8694,
+                            ),
                           ),
                         );
                       },

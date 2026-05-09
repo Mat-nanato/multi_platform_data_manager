@@ -4,7 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class GatePage extends StatefulWidget {
-  final void Function(String store, String actual, String actualWaste) onEnter;
+  final void Function(
+    String store,
+    String address,
+    double lat,
+    double lon,
+    String actual,
+    String actualWaste,
+  ) onEnter;
 
   const GatePage({super.key, required this.onEnter});
 
@@ -293,8 +300,15 @@ class _GatePageState extends State<GatePage> {
 
                   final actual = _cleanNumber(controllers['売上']!.text);
                   final actualWaste = _cleanNumber(controllers['廃棄（原価）']!.text);
-
-                  widget.onEnter(selectedStore!, actual, actualWaste);
+                  final storeInfo = storeInfoMap[selectedStore!]!;
+                  widget.onEnter(
+                    selectedStore!,
+                    storeInfo.address,
+                    storeInfo.lat,
+                    storeInfo.lon,
+                    actual,
+                    actualWaste,
+                  );
 
                   _saveData();
                 },
@@ -306,4 +320,54 @@ class _GatePageState extends State<GatePage> {
       ),
     );
   }
+}
+
+const Map<String, StoreInfo> storeInfoMap = {
+  '東勝山二丁目店': StoreInfo(
+    address: '仙台市青葉区東勝山二丁目',
+    lat: 38.2876,
+    lon: 140.8713,
+  ),
+  '上杉一丁目店': StoreInfo(
+    address: '仙台市青葉区上杉一丁目',
+    lat: 38.2689,
+    lon: 140.8721,
+  ),
+  '仙台木町通一丁目店': StoreInfo(
+    address: '仙台市青葉区木町通一丁目',
+    lat: 38.2680,
+    lon: 140.8605,
+  ),
+  '安養寺二丁目店': StoreInfo(
+    address: '仙台市宮城野区安養寺二丁目',
+    lat: 38.2879,
+    lon: 140.9108,
+  ),
+  '利府青山店': StoreInfo(
+    address: '宮城郡利府町青山',
+    lat: 38.3366,
+    lon: 140.9990,
+  ),
+  '電力ビル店': StoreInfo(
+    address: '仙台市青葉区一番町',
+    lat: 38.2595,
+    lon: 140.8698,
+  ),
+  '中山台店': StoreInfo(
+    address: '仙台市青葉区中山台',
+    lat: 38.3047,
+    lon: 140.8422,
+  ),
+};
+
+class StoreInfo {
+  final String address;
+  final double lat;
+  final double lon;
+
+  const StoreInfo({
+    required this.address,
+    required this.lat,
+    required this.lon,
+  });
 }
