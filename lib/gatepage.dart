@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:multi_platform_data_manager/soneki.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
@@ -43,6 +44,7 @@ class _GatePageState extends State<GatePage> {
   };
 
   final List<String> stores = [
+    '事業部',
     '東勝山二丁目店',
     '上杉一丁目店',
     '仙台木町通一丁目店',
@@ -292,11 +294,22 @@ class _GatePageState extends State<GatePage> {
               ),
             const SizedBox(height: 20),
             if (selectedStore != null) ...[
-              ...controllers.keys.map((label) => _buildInput(label)),
+              if (selectedStore != '事業部')
+                ...controllers.keys.map((label) => _buildInput(label)),
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: () {
                   if (selectedStore == null) return;
+                  // 事業部なら別ページへ
+                  if (selectedStore == '事業部') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SonEkiPage(),
+                      ),
+                    );
+                    return;
+                  }
 
                   final actual = _cleanNumber(controllers['売上']!.text);
                   final actualWaste = _cleanNumber(controllers['廃棄（原価）']!.text);
@@ -323,6 +336,11 @@ class _GatePageState extends State<GatePage> {
 }
 
 const Map<String, StoreInfo> storeInfoMap = {
+  '事業部': StoreInfo(
+    address: '事業部',
+    lat: 0,
+    lon: 0,
+  ),
   '東勝山二丁目店': StoreInfo(
     address: '仙台市青葉区東勝山二丁目',
     lat: 38.2876,
