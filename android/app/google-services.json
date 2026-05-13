@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "611853205338",
+    "project_id": "fm002kanri",
+    "storage_bucket": "fm002kanri.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:611853205338:android:8de5a6bd512a35dd77fd63",
+        "android_client_info": {
+          "package_name": "com.example.new_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUuqRhqDq1ecAheUWJLUkeEMeZAQADrsU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

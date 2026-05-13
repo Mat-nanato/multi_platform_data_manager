@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
-import 'gatepage.dart' as gate_page; // 名前空間追加
-import 'mainpage.dart' as main_page; // 名前空間追加
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-void main() {
+import 'gatepage.dart' as gate_page;
+import 'mainpage.dart' as main_page;
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const MyApp());
 }
 
