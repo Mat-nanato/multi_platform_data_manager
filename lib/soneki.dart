@@ -111,7 +111,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
   /// PDF選択
   /// =========================
   Future<void> _pickPdf(int month) async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
     );
