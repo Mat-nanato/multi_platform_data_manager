@@ -14,29 +14,94 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.6
+
+  # =========================
+  # API
+  # =========================
   http: ^1.2.2
+
+  # =========================
+  # HTML
+  # =========================
   html: ^0.15.0
+
+  # =========================
+  # WebView
+  # =========================
   webview_flutter: ^4.2.1
+
+  # =========================
+  # Logger
+  # =========================
   logger: ^2.0.2
+
+  # =========================
+  # Calendar
+  # =========================
   table_calendar: ^3.0.9
+
+  # =========================
+  # Local Storage
+  # =========================
   shared_preferences: ^2.2.2
+
+  # =========================
+  # Date Format
+  # =========================
   intl: ^0.20.2
 
+  # =========================
+  # Firebase
+  # =========================
   firebase_core: ^4.8.0
   cloud_firestore: ^6.4.0
 
+  # =========================
+  # PDF Viewer
+  # =========================
   syncfusion_flutter_pdfviewer: ^33.2.6
+
+  # =========================
+  # PDF解析
+  # =========================
   syncfusion_flutter_pdf: ^33.2.6
 
+  # =========================
+  # OCR
+  # =========================
+  google_mlkit_text_recognition: ^0.13.0
+
+  # =========================
+  # File Picker
+  # =========================
   file_picker: ^11.0.2
+
+  # =========================
+  # Path
+  # =========================
   path_provider: ^2.1.4
+
+  # =========================
+  # UUID
+  # =========================
   uuid: ^4.5.1
+
+  # =========================
+  # State Management
+  # =========================
   provider: ^6.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"

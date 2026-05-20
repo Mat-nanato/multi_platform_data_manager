@@ -1,4 +1,4 @@
-package com.example.new_app
+package jp.nanatokka.multiplatformdata
 
 import io.flutter.embedding.android.FlutterActivity
 
