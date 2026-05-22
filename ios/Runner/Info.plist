@@ -2,6 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 
@@ -50,10 +51,14 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>音声入力機能のためマイクを使用します。</string>
 
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>位置情報を利用した機能提供のため現在地を使用します。</string>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
+
 		<key>UISceneConfigurations</key>
 		<dict>
 			<key>UIWindowSceneSessionRoleApplication</key>
@@ -101,5 +106,6 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
 </dict>
 </plist>
