@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build iOS IPA Auto Version",
+      "type": "shell",
+      "command": "flutter build ipa --release --build-number=$(date +%s)",
+      "problemMatcher": []
+    }
+  ]
+}
