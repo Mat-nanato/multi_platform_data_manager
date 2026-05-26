@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class GatePage extends StatefulWidget {
+  final List<String> allowedStores;
   final void Function(
     String store,
     String address,
@@ -14,7 +15,11 @@ class GatePage extends StatefulWidget {
     String actualWaste,
   ) onEnter;
 
-  const GatePage({super.key, required this.onEnter});
+  const GatePage({
+    super.key,
+    required this.allowedStores,
+    required this.onEnter,
+  });
 
   @override
   State<GatePage> createState() => _GatePageState();
@@ -54,21 +59,17 @@ class _GatePageState extends State<GatePage> {
     '中山台店',
   ];
 
-  final Map<String, List<String>> passwordMap = {
-    "100927": ["全店舗"],
-    "061685": ["東勝山二丁目店"],
-    "061780": ["上杉一丁目店"],
-    "025658": ["仙台木町通一丁目店"],
-    "061987": ["安養寺二丁目店"],
-    "062012": ["利府青山店"],
-    "062219": ["中山台店"],
-  };
-
   @override
   void initState() {
     super.initState();
+
+    if (widget.allowedStores.contains('全店舗')) {
+      availableStores = List.from(stores);
+    } else {
+      availableStores = widget.allowedStores;
+    }
+
     _loadInitialData();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showPasswordPopup());
   }
 
   Future<void> _loadInitialData() async {
@@ -92,58 +93,6 @@ class _GatePageState extends State<GatePage> {
         selectedDate = DateTime.now();
       });
     }
-  }
-
-  Future<void> _showPasswordPopup() async {
-    String? password;
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        TextEditingController controller = TextEditingController();
-        return AlertDialog(
-          title: const Text('パスワード入力'),
-          content: TextField(
-            controller: controller,
-            obscureText: true,
-            decoration: const InputDecoration(hintText: 'パスワード'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                password = controller.text;
-                if (_validatePassword(password!)) {
-                  Navigator.pop(context);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('アクセスできません')),
-                  );
-                }
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
-    );
-    _setAvailableStores(password!);
-  }
-
-  bool _validatePassword(String password) {
-    return passwordMap.containsKey(password);
-  }
-
-  void _setAvailableStores(String password) {
-    List<String> storesForPassword = passwordMap[password]!;
-
-    setState(() {
-      if (storesForPassword.contains("全店舗")) {
-        availableStores = List.from(stores);
-      } else {
-        availableStores = storesForPassword;
-      }
-      selectedStore = null;
-    });
   }
 
   void _formatNumber(TextEditingController controller, String value) {

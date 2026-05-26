@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
+import 'loginpage.dart' as login_page;
 import 'gatepage.dart' as gate_page;
 import 'mainpage.dart' as main_page;
 
@@ -15,6 +16,12 @@ void main() async {
   runApp(const MyApp());
 }
 
+enum AppPage {
+  login,
+  gate,
+  main,
+}
+
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -23,50 +30,84 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  bool showGate = true;
+  AppPage currentPage = AppPage.login;
 
   String? selectedStore;
 
   Map<String, dynamic>? selectedGateData;
 
+  List<String> allowedStores = [];
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: showGate
-          ? gate_page.GatePage(
-              onEnter: (
-                store,
-                address,
-                lat,
-                lon,
-                actual,
-                actualWaste,
-              ) {
-                setState(() {
-                  selectedStore = store;
+      home: switch (currentPage) {
+        // =========================
+        // ログインページ
+        // =========================
 
-                  selectedGateData = {
-                    'actual': actual,
-                    'actualWaste': actualWaste,
-                    'storeAddress': address,
-                    'lat': lat,
-                    'lon': lon,
-                  };
+        AppPage.login => login_page.LoginPage(
+            onLoginSuccess: (stores, isAdmin) {
+              setState(() {
+                allowedStores = stores;
 
-                  showGate = false;
-                });
-              },
-            )
-          : main_page.MainPage(
-              storeName: selectedStore!,
-              gateData: selectedGateData,
-              onBackToGate: () {
-                setState(() {
-                  showGate = true;
-                });
-              },
-            ),
+                // 管理者
+                if (isAdmin) {
+                  currentPage = AppPage.gate;
+                }
+
+                // 一般
+                else {
+                  selectedStore = stores.first;
+
+                  selectedGateData = null;
+
+                  currentPage = AppPage.main;
+                }
+              });
+            },
+          ),
+
+        // =========================
+        // ゲートページ
+        // =========================
+
+        AppPage.gate => gate_page.GatePage(
+            allowedStores: allowedStores,
+            onEnter: (
+              store,
+              address,
+              lat,
+              lon,
+              actual,
+              actualWaste,
+            ) {
+              setState(() {
+                selectedStore = store;
+
+                selectedGateData = {
+                  'actual': actual,
+                  'actualWaste': actualWaste,
+                  'storeAddress': address,
+                  'lat': lat,
+                  'lon': lon,
+                };
+
+                currentPage = AppPage.main;
+              });
+            },
+          ),
+
+        // =========================
+        // メインページ
+        // =========================
+
+        AppPage.main => main_page.MainPage(
+            storeName: selectedStore!,
+            gateData: selectedGateData,
+          ),
+      },
     );
   }
 }

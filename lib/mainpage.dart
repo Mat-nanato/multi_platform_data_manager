@@ -6,17 +6,16 @@ import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'tenpodetapage.dart';
 import 'aianalysis_page.dart';
+import 'loginpage.dart';
 
 final logger = Logger(printer: PrettyPrinter());
 
 class MainPage extends StatefulWidget {
-  final VoidCallback onBackToGate;
   final String storeName;
   final dynamic gateData;
 
   const MainPage({
     super.key,
-    required this.onBackToGate,
     required this.storeName,
     this.gateData,
   });
@@ -221,9 +220,22 @@ class _MainPageState extends State<MainPage> {
                     ),
                     const SizedBox(height: 20),
                     IconButton(
-                        icon: const Icon(Icons.arrow_back,
-                            color: Colors.white, size: 40),
-                        onPressed: widget.onBackToGate),
+                      icon: const Icon(
+                        Icons.arrow_back,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LoginPage(
+                              onLoginSuccess: (_, __) {},
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 20),
                   ],
                 ),
