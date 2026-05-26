@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-
 import 'loginpage.dart' as login_page;
 import 'gatepage.dart' as gate_page;
 import 'mainpage.dart' as main_page;
