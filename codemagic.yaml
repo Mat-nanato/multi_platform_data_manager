@@ -6,16 +6,10 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Prepare build
+      - name: Disable iOS
         script: |
+          rm -rf ios
           flutter clean
-
-          rm -rf build
-          rm -rf ios/Pods
-          rm -rf ios/Podfile.lock
-
-          mkdir -p build/ios/SourcePackages
-
           flutter pub get
 
       - name: Build Android
