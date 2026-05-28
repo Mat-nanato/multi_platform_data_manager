@@ -53,8 +53,8 @@ dependencies:
   # =========================
   # Firebase
   # =========================
-  firebase_core: ^4.9.0
-  cloud_firestore: ^6.4.1
+  firebase_core: 3.13.0
+  cloud_firestore: 5.6.6
 
   # =========================
   # PDF Viewer
@@ -70,7 +70,7 @@ dependencies:
   # OCR
   # =========================
   google_mlkit_commons: ^0.9.0
-  google_mlkit_text_recognition: ^0.14.0
+  google_mlkit_text_recognition: 0.14.0
 
   # =========================
   # File Picker
@@ -91,6 +91,12 @@ dependencies:
   # State Management
   # =========================
   provider: ^6.1.2
+
+dependency_overrides:
+  firebase_core: 3.13.0
+  cloud_firestore: 5.6.6
+  cloud_firestore_platform_interface: 6.6.6
+  cloud_firestore_web: 4.4.6
 
 dev_dependencies:
   flutter_test:
