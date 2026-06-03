@@ -6,6 +6,7 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:firebase_storage/firebase_storage.dart';
 
 class SonEkiPage extends StatefulWidget {
   const SonEkiPage({super.key});
@@ -36,6 +37,8 @@ class _SonEkiPageState extends State<SonEkiPage> {
   String analysisResult = '';
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   @override
   void initState() {
@@ -144,7 +147,17 @@ class _SonEkiPageState extends State<SonEkiPage> {
 
     final key = '${selectedStore}_${selectedYear}_$month';
 
-    pdfMap[key] = path;
+    final file = File(path);
+
+    final storageRef = _storage.ref().child(
+          'soneki_pdf/$selectedStore/$selectedYear/$month.pdf',
+        );
+
+    await storageRef.putFile(file);
+
+    final downloadUrl = await storageRef.getDownloadURL();
+
+    pdfMap[key] = downloadUrl;
 
     await _savePdfData();
 
@@ -165,17 +178,13 @@ class _SonEkiPageState extends State<SonEkiPage> {
       for (int month = 1; month <= 12; month++) {
         final key = '${selectedStore}_${selectedYear}_$month';
 
-        final path = pdfMap[key];
+        final pdfUrl = pdfMap[key];
 
-        if (path == null) continue;
-
-        final exists = File(path).existsSync();
-
-        if (!exists) continue;
+        if (pdfUrl == null) continue;
 
         yearlyData.add({
           'month': month,
-          'pdfPath': path,
+          'pdfUrl': pdfUrl,
         });
       }
 
@@ -211,9 +220,9 @@ class _SonEkiPageState extends State<SonEkiPage> {
   Widget _buildMonthCard(int month) {
     final key = '${selectedStore}_${selectedYear}_$month';
 
-    final path = pdfMap[key];
+    final pdfUrl = pdfMap[key];
 
-    final exists = path != null && File(path).existsSync();
+    final exists = pdfUrl != null;
 
     return Card(
       child: ListTile(

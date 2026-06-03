@@ -213,7 +213,9 @@ class _MainPageState extends State<MainPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const AiAnalysisPage(),
+                            builder: (_) => AiAnalysisPage(
+                              store: widget.storeName,
+                            ),
                           ),
                         );
                       },

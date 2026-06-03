@@ -3,11 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 final logger = Logger();
 
 class AiAnalysisPage extends StatefulWidget {
-  const AiAnalysisPage({super.key});
+  final String store;
+
+  const AiAnalysisPage({
+    super.key,
+    required this.store,
+  });
 
   @override
   State<AiAnalysisPage> createState() => _AiAnalysisPageState();
@@ -16,6 +23,8 @@ class AiAnalysisPage extends StatefulWidget {
 class _AiAnalysisPageState extends State<AiAnalysisPage> {
   bool loading = false;
   String result = '';
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<List<Map<String, dynamic>>> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
@@ -247,15 +256,83 @@ JSONのみで返答してください。
               onPressed: _analyze,
               child: const Text('発注生成'),
             ),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _showPdfList,
+              child: const Text('このPDF確認'),
+            ),
             const SizedBox(height: 20),
             if (loading) const CircularProgressIndicator(),
             if (!loading)
               Expanded(
-                child: SingleChildScrollView(child: Text(result)),
+                child: SingleChildScrollView(
+                  child: Text(result),
+                ),
               ),
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _showPdfList() async {
+    final doc = await _firestore.collection('soneki_pdf').doc('default').get();
+
+    if (!doc.exists) {
+      return;
+    }
+
+    final data = doc.data();
+
+    if (data == null || data['pdfMap'] == null) {
+      return;
+    }
+
+    final pdfMap = Map<String, dynamic>.from(data['pdfMap']);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          title: const Text('登録PDF一覧'),
+          content: SizedBox(
+            width: 400,
+            height: 500,
+            child: ListView(
+              children: pdfMap.entries.map((entry) {
+                return ListTile(
+                  title: Text(entry.key),
+                  onTap: () {
+                    Navigator.pop(context);
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => Scaffold(
+                          appBar: AppBar(
+                            title: Text(entry.key),
+                          ),
+                          body: SfPdfViewer.network(
+                            entry.value.toString(),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('閉じる'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
