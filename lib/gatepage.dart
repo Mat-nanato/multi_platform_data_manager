@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:multi_platform_data_manager/soneki.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class GatePage extends StatefulWidget {
   final List<String> allowedStores;
@@ -128,8 +129,6 @@ class _GatePageState extends State<GatePage> {
     await prefs.setString(
         actualWasteKey, _cleanNumber(controllers['廃棄（原価）']!.text));
 
-    final history = prefs.getStringList('history') ?? [];
-
     final record = {
       "date": selectedDate!.toIso8601String(),
       "store": selectedStore,
@@ -138,32 +137,39 @@ class _GatePageState extends State<GatePage> {
       ),
     };
 
-    history.add(jsonEncode(record));
-    await prefs.setStringList('history', history);
+    await FirebaseFirestore.instance
+        .collection('daily_data')
+        .doc(
+          '${selectedStore}_${DateFormat('yyyyMMdd').format(selectedDate!)}',
+        )
+        .set(record);
   }
 
   Future<void> _loadDataFor(DateTime date, String store) async {
-    final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList('history') ?? [];
-
-    Map<String, dynamic>? matched;
-    for (final item in history.reversed) {
-      final record = jsonDecode(item);
-      if (record['date'] != null &&
-          record['store'] == store &&
-          DateTime.parse(record['date']).year == date.year &&
-          DateTime.parse(record['date']).month == date.month &&
-          DateTime.parse(record['date']).day == date.day) {
-        matched = record;
-        break;
-      }
-    }
+    final doc = await FirebaseFirestore.instance
+        .collection('daily_data')
+        .doc(
+          '${store}_${DateFormat('yyyyMMdd').format(date)}',
+        )
+        .get();
 
     if (!mounted) return;
 
+    if (!doc.exists) {
+      setState(() {
+        for (final entry in controllers.entries) {
+          entry.value.text = '';
+        }
+      });
+      return;
+    }
+
+    final data = doc.data()!;
+
     setState(() {
       for (final entry in controllers.entries) {
-        final value = matched?[entry.key]?.toString() ?? '';
+        final value = data[entry.key]?.toString() ?? '';
+
         entry.value.text =
             value.isNotEmpty ? formatter.format(int.tryParse(value) ?? 0) : '';
       }

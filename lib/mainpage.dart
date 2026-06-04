@@ -14,11 +14,7 @@ class MainPage extends StatefulWidget {
   final String storeName;
   final dynamic gateData;
 
-  const MainPage({
-    super.key,
-    required this.storeName,
-    this.gateData,
-  });
+  const MainPage({super.key, required this.storeName, this.gateData});
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -77,10 +73,7 @@ class _MainPageState extends State<MainPage> {
         final response = await http.post(
           Uri.parse(workerUrl),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            "type": "image",
-            "prompt": purePrompt,
-          }),
+          body: jsonEncode({"type": "image", "prompt": purePrompt}),
         );
 
         if (response.statusCode == 200 && response.bodyBytes.length > 1000) {
@@ -102,8 +95,8 @@ class _MainPageState extends State<MainPage> {
           body: jsonEncode({
             "type": "chat",
             "messages": [
-              {"role": "user", "content": prompt}
-            ]
+              {"role": "user", "content": prompt},
+            ],
           }),
         );
 
@@ -170,22 +163,26 @@ class _MainPageState extends State<MainPage> {
                   children: [
                     const SizedBox(height: 40),
                     IconButton(
-                        icon: const Text('📅', style: TextStyle(fontSize: 64)),
-                        onPressed: loadCalendar),
+                      icon: const Text('📅', style: TextStyle(fontSize: 64)),
+                      onPressed: loadCalendar,
+                    ),
                     const SizedBox(height: 16),
                     IconButton(
-                        icon: const Text('🍙', style: TextStyle(fontSize: 64)),
-                        onPressed: loadNewProducts),
+                      icon: const Text('🍙', style: TextStyle(fontSize: 64)),
+                      onPressed: loadNewProducts,
+                    ),
                     const SizedBox(height: 8),
                     IconButton(
-                        icon: const Text('🎉', style: TextStyle(fontSize: 64)),
-                        onPressed: loadCampaigns),
+                      icon: const Text('🎉', style: TextStyle(fontSize: 64)),
+                      onPressed: loadCampaigns,
+                    ),
                     const SizedBox(height: 8),
                     IconButton(
-                        icon: const Text('🏷️', style: TextStyle(fontSize: 64)),
-                        onPressed: () {
-                          setState(() => showChatInput = !showChatInput);
-                        }),
+                      icon: const Text('🏷️', style: TextStyle(fontSize: 64)),
+                      onPressed: () {
+                        setState(() => showChatInput = !showChatInput);
+                      },
+                    ),
                     const SizedBox(height: 8),
                     IconButton(
                       icon: const Text('📊', style: TextStyle(fontSize: 64)),
@@ -213,9 +210,8 @@ class _MainPageState extends State<MainPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => AiAnalysisPage(
-                              store: widget.storeName,
-                            ),
+                            builder: (_) =>
+                                AiAnalysisPage(store: widget.storeName),
                           ),
                         );
                       },
@@ -231,9 +227,8 @@ class _MainPageState extends State<MainPage> {
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => LoginPage(
-                              onLoginSuccess: (_, __) {},
-                            ),
+                            builder: (_) =>
+                                LoginPage(onLoginSuccess: (_, _) {}),
                           ),
                         );
                       },
@@ -252,9 +247,13 @@ class _MainPageState extends State<MainPage> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  Text(widget.storeName,
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text(
+                    widget.storeName,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   Expanded(
                     child: Container(

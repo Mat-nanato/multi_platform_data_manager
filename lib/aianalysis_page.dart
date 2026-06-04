@@ -1,9 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 final logger = Logger();
@@ -11,10 +16,7 @@ final logger = Logger();
 class AiAnalysisPage extends StatefulWidget {
   final String store;
 
-  const AiAnalysisPage({
-    super.key,
-    required this.store,
-  });
+  const AiAnalysisPage({super.key, required this.store});
 
   @override
   State<AiAnalysisPage> createState() => _AiAnalysisPageState();
@@ -193,10 +195,10 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
               "content": """
 あなたはコンビニ発注AIです。
 JSONのみで返答してください。
-"""
+""",
             },
-            {"role": "user", "content": jsonEncode(enriched)}
-          ]
+            {"role": "user", "content": jsonEncode(enriched)},
+          ],
         }),
       );
 
@@ -252,9 +254,11 @@ JSONのみで返答してください。
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            ElevatedButton(onPressed: _analyze, child: const Text('発注生成')),
+            const SizedBox(height: 10),
             ElevatedButton(
-              onPressed: _analyze,
-              child: const Text('発注生成'),
+              onPressed: _uploadPdf,
+              child: const Text('PDFアップロード'),
             ),
             const SizedBox(height: 10),
             ElevatedButton(
@@ -264,15 +268,65 @@ JSONのみで返答してください。
             const SizedBox(height: 20),
             if (loading) const CircularProgressIndicator(),
             if (!loading)
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Text(result),
-                ),
-              ),
+              Expanded(child: SingleChildScrollView(child: Text(result))),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _uploadPdf() async {
+    try {
+      final pickResult = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+
+      if (pickResult == null || pickResult.files.single.path == null) return;
+
+      final file = File(pickResult.files.single.path!);
+      final fileName = pickResult.files.single.name;
+
+      final storeName = widget.store;
+
+      final now = DateTime.now();
+      final monthKey = "${now.year}-${now.month.toString().padLeft(2, '0')}";
+
+      final ref = FirebaseStorage.instance.ref().child(
+        'pdfs/$storeName/$fileName',
+      );
+
+      await ref.putFile(file);
+
+      final url = await ref.getDownloadURL();
+
+      final docRef = _firestore.collection('soneki_pdf').doc('default');
+
+      await _firestore.runTransaction((tx) async {
+        final snap = await tx.get(docRef);
+        final data = snap.data() ?? {};
+
+        final pdfMap = Map<String, dynamic>.from(data['pdfMap'] ?? {});
+
+        final storeMap = Map<String, dynamic>.from(pdfMap[storeName] ?? {});
+
+        storeMap[monthKey] = url;
+
+        pdfMap[storeName] = storeMap;
+
+        tx.set(docRef, {'pdfMap': pdfMap}, SetOptions(merge: true));
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('PDFアップロード完了')));
+    } catch (e) {
+      setState(() {
+        result = "アップロード失敗\n$e";
+      });
+    }
   }
 
   Future<void> _showPdfList() async {
@@ -292,6 +346,10 @@ JSONのみで返答してください。
 
     if (!mounted) return;
 
+    final Map<String, dynamic> storeMap = Map<String, dynamic>.from(
+      pdfMap[widget.store] ?? {},
+    );
+
     showDialog(
       context: context,
       builder: (_) {
@@ -301,9 +359,12 @@ JSONのみで返答してください。
             width: 400,
             height: 500,
             child: ListView(
-              children: pdfMap.entries.map((entry) {
+              children: storeMap.entries.map((entry) {
+                final month = entry.key;
+                final url = entry.value;
+
                 return ListTile(
-                  title: Text(entry.key),
+                  title: Text(month),
                   onTap: () {
                     Navigator.pop(context);
 
@@ -311,12 +372,8 @@ JSONのみで返答してください。
                       context,
                       MaterialPageRoute(
                         builder: (_) => Scaffold(
-                          appBar: AppBar(
-                            title: Text(entry.key),
-                          ),
-                          body: SfPdfViewer.network(
-                            entry.value.toString(),
-                          ),
+                          appBar: AppBar(title: Text(month)),
+                          body: SfPdfViewer.network(url.toString()),
                         ),
                       ),
                     );
