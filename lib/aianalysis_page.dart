@@ -1,15 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final logger = Logger();
 
@@ -25,8 +19,6 @@ class AiAnalysisPage extends StatefulWidget {
 class _AiAnalysisPageState extends State<AiAnalysisPage> {
   bool loading = false;
   String result = '';
-
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<List<Map<String, dynamic>>> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
@@ -203,6 +195,8 @@ JSONのみで返答してください。
       );
 
       final decoded = utf8.decode(res.bodyBytes);
+      logger.i("RAW RESPONSE");
+      logger.i(decoded);
 
       if (res.statusCode != 200) {
         setState(() {
@@ -215,16 +209,32 @@ JSONのみで返答してください。
       final data = jsonDecode(decoded);
       final content = data['choices']?[0]?['message']?['content'];
 
+      logger.i("CONTENT TYPE");
+      logger.i(content.runtimeType);
+
+      logger.i("CONTENT VALUE");
+      logger.i(content);
+
       try {
         final orderJson = jsonDecode(content);
 
+        logger.i("TYPE");
+        logger.i(orderJson.runtimeType);
+
+        logger.i("JSON");
+        logger.i(orderJson);
+
         String formatted = "";
 
-        for (final o in orderJson["orders"]) {
+        for (final o in orderJson) {
           formatted += "【${o["store"]}】\n";
-          for (final item in o["items"]) {
-            formatted += "- ${item["name"]}：${item["qty"]}\n";
-          }
+
+          final order = o["order"] as Map<String, dynamic>;
+
+          order.forEach((name, qty) {
+            formatted += "- $name：$qty\n";
+          });
+
           formatted += "\n";
         }
 
@@ -232,16 +242,22 @@ JSONのみで返答してください。
           result = formatted;
           loading = false;
         });
-      } catch (e) {
+      } catch (e, st) {
+        logger.e("JSON PARSE ERROR", error: e, stackTrace: st);
+
         setState(() {
-          result = "JSON解析失敗\n$content";
+          result =
+              "JSON解析失敗\n\n"
+              "エラー: $e\n\n"
+              "----- AI返答 -----\n"
+              "$content";
           loading = false;
         });
       }
-    } catch (e) {
+    } catch (e, st) {
+      logger.e("UPLOAD ERROR", error: e, stackTrace: st);
       setState(() {
-        result = "エラー\n$e";
-        loading = false;
+        result = "アップロード失敗\n$e";
       });
     }
   }
@@ -255,141 +271,39 @@ JSONのみで返答してください。
         child: Column(
           children: [
             ElevatedButton(onPressed: _analyze, child: const Text('発注生成')),
-            const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _uploadPdf,
-              child: const Text('PDFアップロード'),
-            ),
-            const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _showPdfList,
-              child: const Text('このPDF確認'),
-            ),
+
             const SizedBox(height: 20),
+
             if (loading) const CircularProgressIndicator(),
+
             if (!loading)
-              Expanded(child: SingleChildScrollView(child: Text(result))),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(result),
+
+                      const SizedBox(height: 20),
+
+                      ElevatedButton(
+                        onPressed: () async {
+                          await launchUrl(
+                            Uri.parse(
+                              'https://procenter-global.com/procenter/jsp/index.jsp',
+                            ),
+                            mode: LaunchMode.externalApplication,
+                          );
+                        },
+                        child: const Text('損益書'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
-    );
-  }
-
-  Future<void> _uploadPdf() async {
-    try {
-      final pickResult = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-      );
-
-      if (pickResult == null || pickResult.files.single.path == null) return;
-
-      final file = File(pickResult.files.single.path!);
-      final fileName = pickResult.files.single.name;
-
-      final storeName = widget.store;
-
-      final now = DateTime.now();
-      final monthKey = "${now.year}-${now.month.toString().padLeft(2, '0')}";
-
-      final ref = FirebaseStorage.instance.ref().child(
-        'pdfs/$storeName/$fileName',
-      );
-
-      await ref.putFile(file);
-
-      final url = await ref.getDownloadURL();
-
-      final docRef = _firestore.collection('soneki_pdf').doc('default');
-
-      await _firestore.runTransaction((tx) async {
-        final snap = await tx.get(docRef);
-        final data = snap.data() ?? {};
-
-        final pdfMap = Map<String, dynamic>.from(data['pdfMap'] ?? {});
-
-        final storeMap = Map<String, dynamic>.from(pdfMap[storeName] ?? {});
-
-        storeMap[monthKey] = url;
-
-        pdfMap[storeName] = storeMap;
-
-        tx.set(docRef, {'pdfMap': pdfMap}, SetOptions(merge: true));
-      });
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('PDFアップロード完了')));
-    } catch (e) {
-      setState(() {
-        result = "アップロード失敗\n$e";
-      });
-    }
-  }
-
-  Future<void> _showPdfList() async {
-    final doc = await _firestore.collection('soneki_pdf').doc('default').get();
-
-    if (!doc.exists) {
-      return;
-    }
-
-    final data = doc.data();
-
-    if (data == null || data['pdfMap'] == null) {
-      return;
-    }
-
-    final pdfMap = Map<String, dynamic>.from(data['pdfMap']);
-
-    if (!mounted) return;
-
-    final Map<String, dynamic> storeMap = Map<String, dynamic>.from(
-      pdfMap[widget.store] ?? {},
-    );
-
-    showDialog(
-      context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text('登録PDF一覧'),
-          content: SizedBox(
-            width: 400,
-            height: 500,
-            child: ListView(
-              children: storeMap.entries.map((entry) {
-                final month = entry.key;
-                final url = entry.value;
-
-                return ListTile(
-                  title: Text(month),
-                  onTap: () {
-                    Navigator.pop(context);
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(title: Text(month)),
-                          body: SfPdfViewer.network(url.toString()),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              }).toList(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('閉じる'),
-            ),
-          ],
-        );
-      },
     );
   }
 }
