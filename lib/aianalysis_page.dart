@@ -509,7 +509,7 @@ temperature単独より優先して判断すること。
                         .where(
                           (e) =>
                               e.path.endsWith('.pdf') &&
-                              e.path.contains('_$selectedMonth月'),
+                              e.path.contains('損益計算書'),
                         )
                         .map((e) => File(e.path))
                         .toList();
