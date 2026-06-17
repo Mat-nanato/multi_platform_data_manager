@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 class LoginPage extends StatefulWidget {
   final Function(List<String> stores, bool isAdmin) onLoginSuccess;
 
-  const LoginPage({
-    super.key,
-    required this.onLoginSuccess,
-  });
+  const LoginPage({super.key, required this.onLoginSuccess});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -52,11 +49,17 @@ class _LoginPageState extends State<LoginPage> {
   // =========================
 
   void login() {
+    debugPrint('login() 呼ばれた');
+
     final input = adminIdController.text.trim();
 
     if (passwordMap.containsKey(input)) {
+      debugPrint('管理者認証成功: $input');
+
       widget.onLoginSuccess(passwordMap[input]!, true);
     } else {
+      debugPrint('管理者認証失敗: $input');
+
       setState(() {
         errorText = '管理者IDが違います';
       });
@@ -74,12 +77,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void guestLogin() {
+    debugPrint('guestLogin() 呼ばれた');
+    debugPrint('selectedGuestStore = $selectedGuestStore');
+
     if (selectedGuestStore == null) return;
 
-    widget.onLoginSuccess(
-      [selectedGuestStore!],
-      false,
-    );
+    widget.onLoginSuccess([selectedGuestStore!], false);
   }
 
   @override
@@ -106,7 +109,6 @@ class _LoginPageState extends State<LoginPage> {
                     // =========================
                     // 一般UI
                     // =========================
-
                     const Text(
                       '一般',
                       style: TextStyle(
@@ -156,8 +158,9 @@ class _LoginPageState extends State<LoginPage> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed:
-                              selectedGuestStore == null ? null : guestLogin,
+                          onPressed: selectedGuestStore == null
+                              ? null
+                              : guestLogin,
                           child: const Text(
                             '決定',
                             style: TextStyle(fontSize: 18),
@@ -175,7 +178,6 @@ class _LoginPageState extends State<LoginPage> {
                     // =========================
                     // 管理者UI
                     // =========================
-
                     const Text(
                       '管理者ログイン',
                       style: TextStyle(
@@ -203,10 +205,7 @@ class _LoginPageState extends State<LoginPage> {
                       height: 50,
                       child: ElevatedButton(
                         onPressed: login,
-                        child: const Text(
-                          '次へ',
-                          style: TextStyle(fontSize: 18),
-                        ),
+                        child: const Text('次へ', style: TextStyle(fontSize: 18)),
                       ),
                     ),
                   ],

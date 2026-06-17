@@ -1,9 +1,47 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'gatepage.dart';
+import 'dart:io';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:path_provider/path_provider.dart';
+import 'pdf_analysis_page.dart';
+
+class PdfListPage extends StatelessWidget {
+  final int month;
+  final List<File> files;
+
+  const PdfListPage({super.key, required this.month, required this.files});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('$month月 PDF一覧')),
+      body: ListView.builder(
+        itemCount: files.length,
+        itemBuilder: (context, index) {
+          final file = files[index];
+
+          return ListTile(
+            title: Text(file.path.split('/').last),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      Scaffold(appBar: AppBar(), body: SfPdfViewer.file(file)),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
 
 final logger = Logger();
 
@@ -17,13 +55,29 @@ class AiAnalysisPage extends StatefulWidget {
 }
 
 class _AiAnalysisPageState extends State<AiAnalysisPage> {
+  String pdfAnalysisResult = '';
+  bool pdfLoading = false;
   bool loading = false;
   String result = '';
 
   Future<List<Map<String, dynamic>>> _loadHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('history') ?? [];
-    return list.map((e) => jsonDecode(e) as Map<String, dynamic>).toList();
+    final snapshot = await FirebaseFirestore.instance
+        .collection('daily_data')
+        .where('store', isEqualTo: widget.store)
+        .get();
+
+    final data = snapshot.docs
+        .map((doc) => doc.data())
+        .cast<Map<String, dynamic>>()
+        .toList();
+
+    data.sort((a, b) {
+      final da = DateTime.parse(a['date'].toString());
+      final db = DateTime.parse(b['date'].toString());
+      return da.compareTo(db);
+    });
+
+    return data;
   }
 
   String _getWeekday(DateTime date) {
@@ -136,6 +190,23 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
 
     try {
       final history = await _loadHistory();
+
+      final storeInfo = storeInfoMap[widget.store];
+
+      if (storeInfo == null) {
+        throw Exception('店舗情報が見つかりません: ${widget.store}');
+      }
+
+      final wikiEvents = await _fetchWikiEvents(storeInfo.lat, storeInfo.lon);
+
+      logger.i("店舗=${widget.store}");
+      logger.i("住所=${storeInfo.address}");
+      logger.i("lat=${storeInfo.lat}");
+      logger.i("lon=${storeInfo.lon}");
+
+      logger.i("===== HISTORY =====");
+      logger.i(history);
+
       List<Map<String, dynamic>> enriched = [];
 
       double? prevTemp;
@@ -162,8 +233,22 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
         enriched.add({
           "date": dateStr,
           "store": d["store"],
+
           "sales": d["売上"],
           "customers": d["客数"],
+          "wasteCost": d["廃棄（原価）"],
+
+          "onigiriOrder": d["おむすび発注金額"],
+          "sushiOrder": d["寿司発注金額"],
+          "teionBentoOrder": d["定温弁当発注金額"],
+          "sandwichOrder": d["サンドイッチ発注金額"],
+          "pastaOrder": d["パスタ発注金額"],
+          "saladOrder": d["サラダ発注金額"],
+          "sweetBreadOrder": d["菓子パン発注金額"],
+          "deliBreadOrder": d["惣菜パン発注金額"],
+          "breadOrder": d["食パンマルチパン発注金額"],
+          "ffOrder": d["FF発注金額"],
+
           "temperature": temp,
           "weekday": _getWeekday(date),
           "holiday": _isJapaneseHoliday(date),
@@ -171,8 +256,11 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
           "temp_events": _getTempEvents(temp),
           "temp_diff": diff,
           "big_change": big,
+          "nearby_events": wikiEvents,
         });
       }
+      logger.i("===== ENRICHED =====");
+      logger.i(jsonEncode(enriched));
 
       const url = "https://sales-ai-worker.app-lab-nanato.workers.dev";
 
@@ -185,8 +273,118 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
             {
               "role": "system",
               "content": """
-あなたはコンビニ発注AIです。
-JSONのみで返答してください。
+履歴データには過去の売上・客数・発注金額が含まれる。
+
+必ず過去実績を分析し、
+
+・売上
+・客数
+・おむすび発注金額
+・寿司発注金額
+・定温弁当発注金額
+・チルド弁当発注金額
+・サンドイッチ発注金額
+・パスタ発注金額
+・サラダ発注金額
+・菓子パン発注金額
+・惣菜パン発注金額
+・食パンマルチパン発注金額
+・FF発注金額
+
+などの推移を参考に発注数を決定すること。
+
+気温だけで判断してはならない。
+過去実績を最優先で分析すること。
+
+履歴データには以下の補足情報が含まれる。
+
+holiday
+- true = 祝日
+- false = 平日
+
+weekday
+- 月 火 水 木 金 土 日
+
+event
+- 卒業式 → 昼食需要増加の可能性
+- 入学式 → 新規客増加の可能性
+- なし → 特殊イベントなし
+
+temp_events
+- ホット飲料 → 温かい商品の需要増
+- 中華まん → 中華まん需要増
+- クール麺 → 冷し麺需要増
+- 冷凍飲料 → 冷たい飲料需要増
+
+temperature
+- 当日の平均気温
+
+temp_diff
+- 前日との気温差
+
+big_change
+- true = 前日比5℃以上の大幅変化
+- false = 通常変動
+
+temp_diffは重要指標である。
+
+temp_diff >= 5
+→ 冷し麺、サラダ、寿司を増やす
+
+temp_diff <= -5
+→ おにぎり、定温弁当、チルド弁当、FFを増やす
+
+big_change=true の場合は
+temperature単独より優先して判断すること。
+
+発注理由には、
+売上推移・客数推移・曜日・祝日・event・temp_events・temperature・temp_diff・big_change
+を反映すること。
+
+{
+  "store": "店舗名",
+  "date": "YYYY-MM-DD",
+  "orders": [
+    {
+      "item": "商品名",
+      "quantity": 0,
+      "reason": "発注理由"
+    }
+  ]
+}
+
+ルール:
+- storeは店舗名
+- dateは対象日
+- ordersは配列
+- itemは必ず日本語の商品名
+- quantityは整数
+- reasonは日本語
+- drink、bread、snackなど英語カテゴリは禁止
+- orderというキーは禁止
+- orders以外の構造は禁止
+- 配列で囲まない
+- JSON以外の文章は禁止
+- Markdown禁止
+- ```json 禁止
+
+発注対象商品は必ず以下を全て出力すること。
+
+- おにぎり
+- 寿司
+- 定温弁当
+- チルド弁当
+- サンドイッチ
+- パスタ
+- サラダ
+- 菓子パン
+- 惣菜パン
+- 食パンマルチパン
+- FF
+
+上記11カテゴリを省略せず全件出力すること。
+
+発注理由は気温・曜日・祝日・イベント・過去実績を考慮して記載してください。
 """,
             },
             {"role": "user", "content": jsonEncode(enriched)},
@@ -216,7 +414,12 @@ JSONのみで返答してください。
       logger.i(content);
 
       try {
-        final orderJson = jsonDecode(content);
+        String cleaned = content
+            .replaceAll('```json', '')
+            .replaceAll('```', '')
+            .trim();
+
+        final orderJson = jsonDecode(cleaned) as Map<String, dynamic>;
 
         logger.i("TYPE");
         logger.i(orderJson.runtimeType);
@@ -226,14 +429,17 @@ JSONのみで返答してください。
 
         String formatted = "";
 
-        for (final o in orderJson) {
-          formatted += "【${o["store"]}】\n";
+        formatted += "【${orderJson["store"]}】\n";
+        formatted += "${orderJson["date"]}\n\n";
 
-          final order = o["order"] as Map<String, dynamic>;
+        final orders = orderJson["orders"] as List<dynamic>;
 
-          order.forEach((name, qty) {
-            formatted += "- $name：$qty\n";
-          });
+        for (final item in orders) {
+          formatted += "- ${item["item"]}：${item["quantity"]}円\n";
+
+          if (item["reason"] != null) {
+            formatted += "  理由：${item["reason"]}\n";
+          }
 
           formatted += "\n";
         }
@@ -262,6 +468,72 @@ JSONのみで返答してください。
     }
   }
 
+  Future<void> _showPdfMonthDialog() async {
+    int selectedMonth = DateTime.now().month;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('月を選択'),
+              content: DropdownButton<int>(
+                value: selectedMonth,
+                isExpanded: true,
+                items: List.generate(
+                  12,
+                  (i) =>
+                      DropdownMenuItem(value: i + 1, child: Text('${i + 1}月')),
+                ),
+                onChanged: (v) {
+                  if (v != null) {
+                    setDialogState(() => selectedMonth = v);
+                  }
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('キャンセル'),
+                ),
+
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+
+                    final dir = await getApplicationDocumentsDirectory();
+
+                    final files = dir
+                        .listSync()
+                        .where(
+                          (e) =>
+                              e.path.endsWith('.pdf') &&
+                              e.path.contains('_$selectedMonth月'),
+                        )
+                        .map((e) => File(e.path))
+                        .toList();
+
+                    if (!context.mounted) return;
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            PdfListPage(month: selectedMonth, files: files),
+                      ),
+                    );
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -270,7 +542,13 @@ JSONのみで返答してください。
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            ElevatedButton(onPressed: _analyze, child: const Text('発注生成')),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _analyze,
+                child: const Text('発注生成'),
+              ),
+            ),
 
             const SizedBox(height: 20),
 
@@ -286,17 +564,62 @@ JSONのみで返答してください。
 
                       const SizedBox(height: 20),
 
-                      ElevatedButton(
-                        onPressed: () async {
-                          await launchUrl(
-                            Uri.parse(
-                              'https://procenter-global.com/procenter/jsp/index.jsp',
-                            ),
-                            mode: LaunchMode.externalApplication,
-                          );
-                        },
-                        child: const Text('損益書'),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await launchUrl(
+                              Uri.parse(
+                                'https://procenter-global.com/procenter/jsp/index.jsp',
+                              ),
+                              mode: LaunchMode.externalApplication,
+                            );
+                          },
+                          child: const Text('損益書'),
+                        ),
                       ),
+
+                      const SizedBox(height: 10),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _showPdfMonthDialog,
+                          child: const Text('PDF月別一覧'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    PdfAnalysisPage(store: widget.store),
+                              ),
+                            );
+                          },
+                          child: const Text('PDF分析'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      const Text(
+                        '分析結果は間違えることがあります',
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      if (pdfLoading)
+                        const CircularProgressIndicator()
+                      else
+                        Text(pdfAnalysisResult),
                     ],
                   ),
                 ),
@@ -306,4 +629,60 @@ JSONのみで返答してください。
       ),
     );
   }
+}
+
+Future<List<Map<String, dynamic>>> _fetchWikiEvents(
+  double lat,
+  double lon,
+) async {
+  const endpoint = "https://query.wikidata.org/sparql";
+
+  final query =
+      """
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+
+SELECT ?event ?eventLabel WHERE {
+  ?event wdt:P31/wdt:P279* wd:Q1190554.
+  ?event wdt:P625 ?coord.
+
+  SERVICE wikibase:around {
+    ?location wdt:P625 ?coord.
+    bd:serviceParam wikibase:center "Point($lon $lat)"^^geo:wktLiteral.
+    bd:serviceParam wikibase:radius "10".
+  }
+
+  SERVICE wikibase:label {
+    bd:serviceParam wikibase:language "ja,en".
+  }
+}
+LIMIT 10
+""";
+
+  final res = await http.post(
+    Uri.parse(endpoint),
+    headers: {
+      "Content-Type": "application/sparql-query",
+      "Accept": "application/sparql-results+json",
+      "User-Agent": "FlutterApp",
+    },
+    body: query,
+  );
+
+  if (res.statusCode != 200) {
+    return [];
+  }
+
+  final body = utf8.decode(res.bodyBytes);
+
+  if (!res.headers['content-type'].toString().contains('json')) {
+    return [];
+  }
+
+  final data = jsonDecode(body);
+
+  final results = data["results"]["bindings"] as List;
+
+  return results.map((e) {
+    return {"name": e["eventLabel"]?["value"] ?? ""};
+  }).toList();
 }

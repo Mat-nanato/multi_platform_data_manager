@@ -14,7 +14,8 @@ class GatePage extends StatefulWidget {
     double lon,
     String actual,
     String actualWaste,
-  ) onEnter;
+  )
+  onEnter;
 
   const GatePage({
     super.key,
@@ -40,6 +41,7 @@ class _GatePageState extends State<GatePage> {
     'おむすび発注金額': TextEditingController(),
     '寿司発注金額': TextEditingController(),
     '定温弁当発注金額': TextEditingController(),
+    'チルド弁当発注金額': TextEditingController(),
     'サンドイッチ発注金額': TextEditingController(),
     'パスタ発注金額': TextEditingController(),
     'サラダ発注金額': TextEditingController(),
@@ -127,30 +129,38 @@ class _GatePageState extends State<GatePage> {
 
     await prefs.setString(actualKey, _cleanNumber(controllers['売上']!.text));
     await prefs.setString(
-        actualWasteKey, _cleanNumber(controllers['廃棄（原価）']!.text));
+      actualWasteKey,
+      _cleanNumber(controllers['廃棄（原価）']!.text),
+    );
 
     final record = {
       "date": selectedDate!.toIso8601String(),
       "store": selectedStore,
-      ...controllers.map(
-        (k, v) => MapEntry(k, _cleanNumber(v.text)),
-      ),
+      ...controllers.map((k, v) => MapEntry(k, _cleanNumber(v.text))),
     };
+    debugPrint("SAVE RECORD");
+    debugPrint(jsonEncode(record));
 
-    await FirebaseFirestore.instance
-        .collection('daily_data')
-        .doc(
-          '${selectedStore}_${DateFormat('yyyyMMdd').format(selectedDate!)}',
-        )
-        .set(record);
+    try {
+      await FirebaseFirestore.instance
+          .collection('daily_data')
+          .doc(
+            '${selectedStore}_${DateFormat('yyyyMMdd').format(selectedDate!)}',
+          )
+          .set(record);
+
+      debugPrint('Firestore保存完了');
+    } catch (e, st) {
+      debugPrint('Firestore保存失敗');
+      debugPrint(e.toString());
+      debugPrint(st.toString());
+    }
   }
 
   Future<void> _loadDataFor(DateTime date, String store) async {
     final doc = await FirebaseFirestore.instance
         .collection('daily_data')
-        .doc(
-          '${store}_${DateFormat('yyyyMMdd').format(date)}',
-        )
+        .doc('${store}_${DateFormat('yyyyMMdd').format(date)}')
         .get();
 
     if (!mounted) return;
@@ -170,8 +180,9 @@ class _GatePageState extends State<GatePage> {
       for (final entry in controllers.entries) {
         final value = data[entry.key]?.toString() ?? '';
 
-        entry.value.text =
-            value.isNotEmpty ? formatter.format(int.tryParse(value) ?? 0) : '';
+        entry.value.text = value.isNotEmpty
+            ? formatter.format(int.tryParse(value) ?? 0)
+            : '';
       }
     });
   }
@@ -253,32 +264,72 @@ class _GatePageState extends State<GatePage> {
                 ...controllers.keys.map((label) => _buildInput(label)),
               const SizedBox(height: 30),
               ElevatedButton(
-                onPressed: () {
-                  if (selectedStore == null) return;
-                  // 事業部なら別ページへ
-                  if (selectedStore == '事業部') {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SonEkiPage(),
-                      ),
-                    );
+                onPressed: () async {
+                  debugPrint('【次へ】押下');
+
+                  if (selectedStore == null) {
+                    debugPrint('selectedStore == null');
                     return;
                   }
 
-                  final actual = _cleanNumber(controllers['売上']!.text);
-                  final actualWaste = _cleanNumber(controllers['廃棄（原価）']!.text);
-                  final storeInfo = storeInfoMap[selectedStore!]!;
-                  widget.onEnter(
-                    selectedStore!,
-                    storeInfo.address,
-                    storeInfo.lat,
-                    storeInfo.lon,
-                    actual,
-                    actualWaste,
-                  );
+                  debugPrint('selectedStore = $selectedStore');
 
-                  _saveData();
+                  // 事業部なら別ページへ
+                  if (selectedStore == '事業部') {
+                    debugPrint('SonEkiPageへ遷移');
+
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SonEkiPage()),
+                    );
+
+                    debugPrint('SonEkiPageから復帰');
+                    return;
+                  }
+
+                  try {
+                    final actual = _cleanNumber(controllers['売上']!.text);
+                    final actualWaste = _cleanNumber(
+                      controllers['廃棄（原価）']!.text,
+                    );
+
+                    debugPrint('actual = $actual');
+                    debugPrint('actualWaste = $actualWaste');
+
+                    final storeInfo = storeInfoMap[selectedStore!];
+
+                    if (storeInfo == null) {
+                      debugPrint('storeInfo == null');
+                      return;
+                    }
+
+                    debugPrint(
+                      'storeInfo: '
+                      '${storeInfo.address}, '
+                      '${storeInfo.lat}, '
+                      '${storeInfo.lon}',
+                    );
+
+                    debugPrint('onEnter開始');
+
+                    widget.onEnter(
+                      selectedStore!,
+                      storeInfo.address,
+                      storeInfo.lat,
+                      storeInfo.lon,
+                      actual,
+                      actualWaste,
+                    );
+
+                    debugPrint('onEnter終了');
+
+                    await _saveData();
+
+                    debugPrint('_saveData終了');
+                  } catch (e, st) {
+                    debugPrint('【エラー】$e');
+                    debugPrint(st.toString());
+                  }
                 },
                 child: const Text('次へ'),
               ),
@@ -291,46 +342,14 @@ class _GatePageState extends State<GatePage> {
 }
 
 const Map<String, StoreInfo> storeInfoMap = {
-  '事業部': StoreInfo(
-    address: '事業部',
-    lat: 0,
-    lon: 0,
-  ),
-  '東勝山二丁目店': StoreInfo(
-    address: '仙台市青葉区東勝山二丁目',
-    lat: 38.2876,
-    lon: 140.8713,
-  ),
-  '上杉一丁目店': StoreInfo(
-    address: '仙台市青葉区上杉一丁目',
-    lat: 38.2689,
-    lon: 140.8721,
-  ),
-  '仙台木町通一丁目店': StoreInfo(
-    address: '仙台市青葉区木町通一丁目',
-    lat: 38.2680,
-    lon: 140.8605,
-  ),
-  '安養寺二丁目店': StoreInfo(
-    address: '仙台市宮城野区安養寺二丁目',
-    lat: 38.2879,
-    lon: 140.9108,
-  ),
-  '利府青山店': StoreInfo(
-    address: '宮城郡利府町青山',
-    lat: 38.3366,
-    lon: 140.9990,
-  ),
-  '電力ビル店': StoreInfo(
-    address: '仙台市青葉区一番町',
-    lat: 38.2595,
-    lon: 140.8698,
-  ),
-  '中山台店': StoreInfo(
-    address: '仙台市青葉区中山台',
-    lat: 38.3047,
-    lon: 140.8422,
-  ),
+  '事業部': StoreInfo(address: '事業部', lat: 0, lon: 0),
+  '東勝山二丁目店': StoreInfo(address: '仙台市青葉区東勝山二丁目', lat: 38.2876, lon: 140.8713),
+  '上杉一丁目店': StoreInfo(address: '仙台市青葉区上杉一丁目', lat: 38.2689, lon: 140.8721),
+  '仙台木町通一丁目店': StoreInfo(address: '仙台市青葉区木町通一丁目', lat: 38.2680, lon: 140.8605),
+  '安養寺二丁目店': StoreInfo(address: '仙台市宮城野区安養寺二丁目', lat: 38.2879, lon: 140.9108),
+  '利府青山店': StoreInfo(address: '宮城郡利府町青山', lat: 38.3366, lon: 140.9990),
+  '電力ビル店': StoreInfo(address: '仙台市青葉区一番町', lat: 38.2595, lon: 140.8698),
+  '中山台店': StoreInfo(address: '仙台市青葉区中山台', lat: 38.3047, lon: 140.8422),
 };
 
 class StoreInfo {

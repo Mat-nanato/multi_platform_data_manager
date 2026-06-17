@@ -6,15 +6,20 @@ import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'tenpodetapage.dart';
 import 'aianalysis_page.dart';
-import 'loginpage.dart';
 
 final logger = Logger(printer: PrettyPrinter());
 
 class MainPage extends StatefulWidget {
   final String storeName;
   final dynamic gateData;
+  final VoidCallback onBack;
 
-  const MainPage({super.key, required this.storeName, this.gateData});
+  const MainPage({
+    super.key,
+    required this.storeName,
+    this.gateData,
+    required this.onBack,
+  });
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -38,6 +43,7 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
+    debugPrint('MainPage initState');
 
     _webController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -51,6 +57,7 @@ class _MainPageState extends State<MainPage> {
 
   @override
   void dispose() {
+    debugPrint('MainPage dispose');
     _controller.dispose();
     super.dispose();
   }
@@ -150,6 +157,7 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('MainPage build: ${widget.storeName}');
     return Scaffold(
       body: Row(
         children: [
@@ -223,15 +231,7 @@ class _MainPageState extends State<MainPage> {
                         color: Colors.white,
                         size: 40,
                       ),
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                LoginPage(onLoginSuccess: (_, _) {}),
-                          ),
-                        );
-                      },
+                      onPressed: widget.onBack,
                     ),
                     const SizedBox(height: 20),
                   ],

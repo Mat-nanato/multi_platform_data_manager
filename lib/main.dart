@@ -40,6 +40,8 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('BUILD: $currentPage');
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: switch (currentPage) {
@@ -48,6 +50,7 @@ class _MyAppState extends State<MyApp> {
         // =========================
         AppPage.login => login_page.LoginPage(
           onLoginSuccess: (stores, isAdmin) {
+            debugPrint('LOGIN SUCCESS');
             setState(() {
               allowedStores = stores;
 
@@ -73,6 +76,7 @@ class _MyAppState extends State<MyApp> {
         AppPage.gate => gate_page.GatePage(
           allowedStores: allowedStores,
           onEnter: (store, address, lat, lon, actual, actualWaste) {
+            debugPrint('ENTER');
             setState(() {
               selectedStore = store;
 
@@ -85,6 +89,7 @@ class _MyAppState extends State<MyApp> {
               };
 
               currentPage = AppPage.main;
+              debugPrint('currentPage -> $currentPage');
             });
           },
         ),
@@ -95,6 +100,16 @@ class _MyAppState extends State<MyApp> {
         AppPage.main => main_page.MainPage(
           storeName: selectedStore!,
           gateData: selectedGateData,
+          onBack: () {
+            setState(() {
+              currentPage = AppPage.login;
+
+              // 必要なら状態も初期化
+              selectedStore = null;
+              selectedGateData = null;
+              allowedStores = [];
+            });
+          },
         ),
       },
     );
