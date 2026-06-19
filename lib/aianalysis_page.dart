@@ -55,7 +55,7 @@ class AiAnalysisPage extends StatefulWidget {
   State<AiAnalysisPage> createState() => _AiAnalysisPageState();
 }
 
-Future<void> _importPdf() async {
+Future<void> _importPdf(int month) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: ['pdf'],
@@ -73,7 +73,10 @@ Future<void> _importPdf() async {
 
   final fileName = sourcePath.split('/').last;
 
-  await sourceFile.copy('${dir.path}/$fileName');
+  final saveName =
+      '${DateTime.now().year}${month.toString().padLeft(2, '0')}_$fileName';
+
+  await sourceFile.copy('${dir.path}/$saveName');
 }
 
 class _AiAnalysisPageState extends State<AiAnalysisPage> {
@@ -81,6 +84,53 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   bool pdfLoading = false;
   bool loading = false;
   String result = '';
+
+  Future<void> _showImportPdfMonthDialog() async {
+    int selectedMonth = DateTime.now().month;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('保存月を選択'),
+              content: DropdownButton<int>(
+                value: selectedMonth,
+                isExpanded: true,
+                items: List.generate(
+                  12,
+                  (i) =>
+                      DropdownMenuItem(value: i + 1, child: Text('${i + 1}月')),
+                ),
+                onChanged: (v) {
+                  if (v != null) {
+                    setDialogState(() {
+                      selectedMonth = v;
+                    });
+                  }
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('キャンセル'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+
+                    await _importPdf(selectedMonth);
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   Future<List<Map<String, dynamic>>> _loadHistory() async {
     final snapshot = await FirebaseFirestore.instance
@@ -528,8 +578,19 @@ temperature単独より優先して判断すること。
 
                     final all = dir.listSync();
 
+                    final storeCode = getStoreCode(widget.store);
+
                     final files = all
-                        .where((e) => e.path.endsWith('.pdf'))
+                        .where((e) {
+                          final name = e.path.split('/').last;
+
+                          final targetMonth =
+                              '${DateTime.now().year}${selectedMonth.toString().padLeft(2, '0')}';
+
+                          return name.endsWith('.pdf') &&
+                              name.contains(storeCode) &&
+                              name.contains(targetMonth);
+                        })
                         .map((e) => File(e.path))
                         .toList();
 
@@ -603,7 +664,7 @@ temperature単独より優先して判断すること。
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _importPdf,
+                          onPressed: _showImportPdfMonthDialog,
                           child: const Text('PDF取込'),
                         ),
                       ),
@@ -712,4 +773,25 @@ LIMIT 10
   return results.map((e) {
     return {"name": e["eventLabel"]?["value"] ?? ""};
   }).toList();
+}
+
+String getStoreCode(String storeName) {
+  switch (storeName) {
+    case '東勝山二丁目店':
+      return '61685';
+    case '上杉一丁目店':
+      return '61780';
+    case '仙台木町通一丁目店':
+      return '25658';
+    case '安養寺二丁目店':
+      return '61987';
+    case '利府青山店':
+      return '62012';
+    case '電力ビル店':
+      return '62060';
+    case '中山台店':
+      return '62219';
+    default:
+      return '';
+  }
 }
