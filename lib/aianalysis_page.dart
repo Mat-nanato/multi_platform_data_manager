@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'pdf_analysis_page.dart';
+import 'package:file_picker/file_picker.dart';
 
 class PdfListPage extends StatelessWidget {
   final int month;
@@ -52,6 +53,27 @@ class AiAnalysisPage extends StatefulWidget {
 
   @override
   State<AiAnalysisPage> createState() => _AiAnalysisPageState();
+}
+
+Future<void> _importPdf() async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['pdf'],
+  );
+
+  if (result == null) return;
+
+  final sourcePath = result.files.single.path;
+
+  if (sourcePath == null) return;
+
+  final sourceFile = File(sourcePath);
+
+  final dir = await getApplicationDocumentsDirectory();
+
+  final fileName = sourcePath.split('/').last;
+
+  await sourceFile.copy('${dir.path}/$fileName');
 }
 
 class _AiAnalysisPageState extends State<AiAnalysisPage> {
@@ -504,13 +526,10 @@ temperature単独より優先して判断すること。
 
                     final dir = await getApplicationDocumentsDirectory();
 
-                    final files = dir
-                        .listSync()
-                        .where(
-                          (e) =>
-                              e.path.endsWith('.pdf') &&
-                              e.path.contains('損益計算書'),
-                        )
+                    final all = dir.listSync();
+
+                    final files = all
+                        .where((e) => e.path.endsWith('.pdf'))
                         .map((e) => File(e.path))
                         .toList();
 
@@ -580,6 +599,14 @@ temperature単独より優先して判断すること。
                       ),
 
                       const SizedBox(height: 10),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _importPdf,
+                          child: const Text('PDF取込'),
+                        ),
+                      ),
 
                       SizedBox(
                         width: double.infinity,
