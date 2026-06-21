@@ -20,7 +20,7 @@ class PdfListPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('$month月 PDF一覧')),
+      appBar: AppBar(title: Text('$month月 損益書その他一覧')),
       body: ListView.builder(
         itemCount: files.length,
         itemBuilder: (context, index) {
@@ -572,9 +572,13 @@ temperature単独より優先して判断すること。
 
                 ElevatedButton(
                   onPressed: () async {
+                    debugPrint('OK BUTTON');
+
                     Navigator.pop(context);
 
                     final dir = await getApplicationDocumentsDirectory();
+
+                    debugPrint('DIR=${dir.path}');
 
                     final all = dir.listSync();
 
@@ -586,6 +590,10 @@ temperature単独より優先して判断すること。
 
                           final targetMonth =
                               '${DateTime.now().year}${selectedMonth.toString().padLeft(2, '0')}';
+
+                          debugPrint('FILE=$name');
+                          debugPrint('STORE=$storeCode');
+                          debugPrint('MONTH=$targetMonth');
 
                           return name.endsWith('.pdf') &&
                               name.contains(storeCode) &&

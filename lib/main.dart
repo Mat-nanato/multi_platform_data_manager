@@ -81,6 +81,7 @@ class _MyAppState extends State<MyApp> {
               selectedStore = store;
 
               selectedGateData = {
+                'store': store,
                 'actual': actual,
                 'actualWaste': actualWaste,
                 'storeAddress': address,

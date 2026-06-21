@@ -120,19 +120,6 @@ class _GatePageState extends State<GatePage> {
   Future<void> _saveData() async {
     if (selectedDate == null || selectedStore == null) return;
 
-    final prefs = await SharedPreferences.getInstance();
-
-    final String actualKey =
-        'actual-${DateFormat('yyyyMMdd').format(selectedDate!)}';
-    final String actualWasteKey =
-        'actualWaste-${DateFormat('yyyyMMdd').format(selectedDate!)}';
-
-    await prefs.setString(actualKey, _cleanNumber(controllers['売上']!.text));
-    await prefs.setString(
-      actualWasteKey,
-      _cleanNumber(controllers['廃棄（原価）']!.text),
-    );
-
     final record = {
       "date": selectedDate!.toIso8601String(),
       "store": selectedStore,

@@ -199,6 +199,7 @@ class _MainPageState extends State<MainPage> {
                           context,
                           MaterialPageRoute(
                             builder: (context) => TenpoDataPage(
+                              storeName: widget.gateData?['store'] ?? '',
                               actual: widget.gateData?['actual'] ?? '',
                               actualWaste:
                                   widget.gateData?['actualWaste'] ?? '',

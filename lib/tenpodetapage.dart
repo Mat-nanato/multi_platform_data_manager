@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 final formatter = NumberFormat('#,###');
 
@@ -15,8 +15,11 @@ class TenpoDataPage extends StatefulWidget {
   final double lat;
   final double lon;
 
+  final String storeName;
+
   const TenpoDataPage({
     super.key,
+    required this.storeName,
     required this.lat,
     required this.lon,
     this.actual = '',
@@ -32,9 +35,6 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
   Map<String, dynamic> _weatherMap = {};
-  String _dateKey(String base) {
-    return '$base-${DateFormat('yyyyMMdd').format(_selectedDay)}';
-  }
 
   int _calculateBaseDailyTarget(DateTime day) {
     int monthlyTarget = _parse(_monthlyTargetController.text);
@@ -43,35 +43,47 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
     return (monthlyTarget / daysInMonth).round();
   }
 
-// 売上の累計
+  // 売上の累計
   Future<int> _getMonthlyTotalUntilSelected() async {
-    final prefs = await SharedPreferences.getInstance();
-
     int total = 0;
+
     DateTime start = DateTime(_selectedDay.year, _selectedDay.month, 1);
 
     for (int i = 0; i <= _selectedDay.day - 1; i++) {
       DateTime day = start.add(Duration(days: i));
-      String key = 'actual-${DateFormat('yyyyMMdd').format(day)}';
-      String value = prefs.getString(key) ?? '0';
-      total += _parse(value);
+
+      final doc = await FirebaseFirestore.instance
+          .collection('daily_data')
+          .doc('${widget.storeName}_${DateFormat('yyyyMMdd').format(day)}')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        total += _parse(data['売上'] ?? '0');
+      }
     }
 
     return total;
   }
 
-// ← ここに追加（累計廃棄）
+  // 累計廃棄
   Future<int> _getMonthlyWasteTotalUntilSelected() async {
-    final prefs = await SharedPreferences.getInstance();
-
     int total = 0;
+
     DateTime start = DateTime(_selectedDay.year, _selectedDay.month, 1);
 
     for (int i = 0; i <= _selectedDay.day - 1; i++) {
       DateTime day = start.add(Duration(days: i));
-      String key = 'actualWaste-${DateFormat('yyyyMMdd').format(day)}';
-      String value = prefs.getString(key) ?? '0';
-      total += _parse(value);
+
+      final doc = await FirebaseFirestore.instance
+          .collection('daily_data')
+          .doc('${widget.storeName}_${DateFormat('yyyyMMdd').format(day)}')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        total += _parse(data['廃棄（原価）'] ?? '0');
+      }
     }
 
     return total;
@@ -119,7 +131,8 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
 
   bool isHoliday(DateTime day) {
     return _holidays.any(
-        (d) => d.year == day.year && d.month == day.month && d.day == day.day);
+      (d) => d.year == day.year && d.month == day.month && d.day == day.day,
+    );
   }
 
   @override
@@ -167,51 +180,72 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
   int _parse(String text) => int.tryParse(text.replaceAll(',', '')) ?? 0;
 
   Future<void> _saveAll() async {
-    final prefs = await SharedPreferences.getInstance();
+    await FirebaseFirestore.instance
+        .collection('tenpo_setting')
+        .doc(widget.storeName)
+        .set({
+          'monthlyTarget': _monthlyTargetController.text,
+          'monthlyWaste': _monthlyWasteController.text,
 
-    await prefs.setString('monthlyTarget', _monthlyTargetController.text);
-    await prefs.setString('monthlyWaste', _monthlyWasteController.text);
-    await prefs.setString(_dateKey('actual'), _actualController.text);
-    await prefs.setString(_dateKey('actualWaste'), _actualWasteController.text);
+          'weekday': _weekday,
+          'saturday': _saturday,
+          'sunday': _sunday,
+          'holiday': _holiday,
 
-    await prefs.setString('weekday', _weekday);
-    await prefs.setString('saturday', _saturday);
-    await prefs.setString('sunday', _sunday);
-    await prefs.setString('holiday', _holiday);
+          'weekdayWaste': _weekdayWaste,
+          'dayHolidayWaste': _dayHolidayWaste,
+        });
 
-    await prefs.setString('weekdayWaste', _weekdayWaste);
-    await prefs.setString('dayHolidayWaste', _dayHolidayWaste);
+    if (!mounted) return;
 
-    if (!mounted) return; // ←これ追加
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('保存しました')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('保存しました')));
   }
 
   Future<void> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
+    // 売上目標などはFirestore
+    final doc = await FirebaseFirestore.instance
+        .collection('tenpo_setting')
+        .doc(widget.storeName)
+        .get();
+
+    final dailyDoc = await FirebaseFirestore.instance
+        .collection('daily_data')
+        .doc(
+          '${widget.storeName}_${DateFormat('yyyyMMdd').format(_selectedDay)}',
+        )
+        .get();
+
+    if (dailyDoc.exists) {
+      final daily = dailyDoc.data()!;
+
+      _actualController.text = daily['売上'] ?? '';
+      _actualWasteController.text = daily['廃棄（原価）'] ?? '';
+    }
 
     setState(() {
-      _monthlyTargetController.text = prefs.getString('monthlyTarget') ?? '';
-      _monthlyWasteController.text = prefs.getString('monthlyWaste') ?? '';
-      // 👇差し替え
-      _actualController.text = prefs.getString(_dateKey('actual')) ?? '';
+      if (doc.exists) {
+        final data = doc.data()!;
 
-      _actualWasteController.text =
-          prefs.getString(_dateKey('actualWaste')) ?? '';
+        _monthlyTargetController.text = data['monthlyTarget'] ?? '';
 
-      _weekday = prefs.getString('weekday') ?? '';
-      _saturday = prefs.getString('saturday') ?? '';
-      _sunday = prefs.getString('sunday') ?? '';
-      _holiday = prefs.getString('holiday') ?? '';
+        _monthlyWasteController.text = data['monthlyWaste'] ?? '';
 
-      _weekdayWaste = prefs.getString('weekdayWaste') ?? '';
-      _dayHolidayWaste = prefs.getString('dayHolidayWaste') ?? '';
+        _weekday = data['weekday'] ?? '';
+        _saturday = data['saturday'] ?? '';
+        _sunday = data['sunday'] ?? '';
+        _holiday = data['holiday'] ?? '';
+
+        _weekdayWaste = data['weekdayWaste'] ?? '';
+        _dayHolidayWaste = data['dayHolidayWaste'] ?? '';
+      }
 
       _weekdayController.text = _weekday;
       _saturdayController.text = _saturday;
       _sundayController.text = _sunday;
       _holidayController.text = _holiday;
+
       _weekdayWasteController.text = _weekdayWaste;
       _dayHolidayWasteController.text = _dayHolidayWaste;
     });
@@ -300,7 +334,8 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
           child: Row(
             children: [
               Expanded(
-                  child: Text(label, style: const TextStyle(fontSize: 12))),
+                child: Text(label, style: const TextStyle(fontSize: 12)),
+              ),
               SizedBox(
                 width: 60,
                 child: TextField(
@@ -337,7 +372,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                   });
                   _saveAll();
                 },
-              )
+              ),
             ],
           ),
         ),
@@ -349,7 +384,8 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
     debugPrint('lat=${widget.lat}');
     debugPrint('lon=${widget.lon}');
 
-    final weatherUrl = 'https://api.open-meteo.com/v1/forecast'
+    final weatherUrl =
+        'https://api.open-meteo.com/v1/forecast'
         '?latitude=${widget.lat}'
         '&longitude=${widget.lon}'
         '&daily=temperature_2m_max,temperature_2m_min'
@@ -373,10 +409,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
     Map<String, dynamic> tempMap = {};
 
     for (int i = 0; i < dates.length; i++) {
-      tempMap[dates[i]] = {
-        'max': maxTemps[i],
-        'min': minTemps[i],
-      };
+      tempMap[dates[i]] = {'max': maxTemps[i], 'min': minTemps[i]};
     }
 
     for (int i = 1; i < dates.length; i++) {
@@ -422,10 +455,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                     ),
                   ),
                   const Text('円'),
-                  IconButton(
-                    icon: const Icon(Icons.save),
-                    onPressed: _saveAll,
-                  ),
+                  IconButton(icon: const Icon(Icons.save), onPressed: _saveAll),
                 ],
               ),
               Row(
@@ -439,10 +469,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                     ),
                   ),
                   const Text('円'),
-                  IconButton(
-                    icon: const Icon(Icons.save),
-                    onPressed: _saveAll,
-                  ),
+                  IconButton(icon: const Icon(Icons.save), onPressed: _saveAll),
                 ],
               ),
               const SizedBox(height: 10),
@@ -496,29 +523,38 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                                         : Colors.cyan,
                                   ),
                                 ),
-                            ]
+                            ],
                           ],
                         ),
                       );
                     },
                   ),
                   onDaySelected: (s, f) async {
-                    final prefs = await SharedPreferences.getInstance();
+                    final dailyDoc = await FirebaseFirestore.instance
+                        .collection('daily_data')
+                        .doc(
+                          '${widget.storeName}_${DateFormat('yyyyMMdd').format(s)}',
+                        )
+                        .get();
 
                     setState(() {
                       _selectedDay = s;
                       _focusedDay = f;
 
-                      _actualController.text =
-                          prefs.getString(_dateKey('actual')) ?? '';
+                      if (dailyDoc.exists) {
+                        final daily = dailyDoc.data()!;
 
-                      _actualWasteController.text =
-                          prefs.getString(_dateKey('actualWaste')) ?? '';
+                        _actualController.text = daily['売上'] ?? '';
+                        _actualWasteController.text = daily['廃棄（原価）'] ?? '';
+                      } else {
+                        _actualController.clear();
+                        _actualWasteController.clear();
+                      }
                     });
                   },
                 ),
               ),
-// ← ここに基準日時売上カードを追加
+              // ← ここに基準日時売上カードを追加
               Card(
                 color: Colors.blue[50],
                 child: Padding(
@@ -530,20 +566,26 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                 ),
               ),
 
-// 既存の比率カード
-              Row(children: [
-                _buildRatioCard('平日売上', _weekdayController),
-                _buildRatioCard('土曜', _saturdayController),
-              ]),
-              Row(children: [
-                _buildRatioCard('日曜', _sundayController),
-                _buildRatioCard('祝日', _holidayController),
-              ]),
-              Row(children: [
-                _buildRatioCard('平日廃棄', _weekdayWasteController),
-                _buildRatioCard('日祝廃棄', _dayHolidayWasteController),
-              ]),
-// 日販目標
+              // 既存の比率カード
+              Row(
+                children: [
+                  _buildRatioCard('平日売上', _weekdayController),
+                  _buildRatioCard('土曜', _saturdayController),
+                ],
+              ),
+              Row(
+                children: [
+                  _buildRatioCard('日曜', _sundayController),
+                  _buildRatioCard('祝日', _holidayController),
+                ],
+              ),
+              Row(
+                children: [
+                  _buildRatioCard('平日廃棄', _weekdayWasteController),
+                  _buildRatioCard('日祝廃棄', _dayHolidayWasteController),
+                ],
+              ),
+              // 日販目標
               Card(
                 color: Colors.blue[50],
                 child: Padding(
@@ -554,7 +596,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                 ),
               ),
 
-// 累計達成率カード
+              // 累計達成率カード
               FutureBuilder<int>(
                 future: _calculateMonthlyAchievementRate(),
                 builder: (context, snapshot) {
@@ -572,7 +614,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                 },
               ),
 
-// 日割り廃棄目標
+              // 日割り廃棄目標
               Card(
                 color: Colors.blue[50],
                 child: Padding(
@@ -583,7 +625,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                 ),
               ),
 
-// 累計廃棄使用率カード
+              // 累計廃棄使用率カード
               FutureBuilder<int>(
                 future: _calculateMonthlyWasteRate(),
                 builder: (context, snapshot) {
