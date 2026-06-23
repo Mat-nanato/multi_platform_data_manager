@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class PdfAnalysisPage extends StatefulWidget {
   final String store;
@@ -16,6 +19,40 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
   bool pdfLoading = false;
   String pdfAnalysisResult = '';
 
+  Future<String> _loadPdfText(int month) async {
+    final dir = await getApplicationDocumentsDirectory();
+
+    final storeCode = getStoreCode(widget.store);
+
+    final targetMonth =
+        '${DateTime.now().year}${month.toString().padLeft(2, '0')}';
+
+    final files = dir
+        .listSync()
+        .whereType<File>()
+        .where(
+          (f) =>
+              f.path.endsWith('.pdf') &&
+              f.path.contains(storeCode) &&
+              f.path.contains(targetMonth),
+        )
+        .toList();
+
+    if (files.isEmpty) {
+      throw Exception('$month月PDFが見つかりません');
+    }
+
+    final file = files.first;
+
+    final document = PdfDocument(inputBytes: file.readAsBytesSync());
+
+    final text = PdfTextExtractor(document).extractText();
+
+    document.dispose();
+
+    return text;
+  }
+
   // =========================
   // PDFボタン押下メイン処理
   // =========================
@@ -28,13 +65,13 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
     try {
       final now = DateTime.now();
 
-      final thisMonth = await _loadMonthlyData(now.month);
-      final lastMonth = await _loadMonthlyData(now.month - 1);
+      final thisMonthText = await _loadPdfText(now.month);
+      final lastMonthText = await _loadPdfText(now.month - 1);
 
       final payload = {
         "store": widget.store,
-        "thisMonth": thisMonth,
-        "lastMonth": lastMonth,
+        "thisMonthPdf": thisMonthText,
+        "lastMonthPdf": lastMonthText,
       };
 
       const url = "https://sales-ai-worker.app-lab-nanato.workers.dev";
@@ -118,38 +155,6 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
   }
 
   // =========================
-  // Firestore 月次集計
-  // =========================
-  Future<Map<String, dynamic>> _loadMonthlyData(int month) async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('daily_data')
-        .where('store', isEqualTo: widget.store)
-        .get();
-
-    double sales = 0;
-    double cost = 0;
-    double profit = 0;
-
-    for (final doc in snapshot.docs) {
-      final data = doc.data();
-
-      try {
-        final date = DateTime.parse(data['date']);
-
-        if (date.month != month) continue;
-
-        sales += (data['売上'] ?? 0).toDouble();
-        cost += (data['原価'] ?? 0).toDouble();
-        profit += (data['営業利益'] ?? 0).toDouble();
-      } catch (_) {
-        continue;
-      }
-    }
-
-    return {"売上高合計": sales, "売上原価合計": cost, "営業利益": profit};
-  }
-
-  // =========================
   // UI
   // =========================
   @override
@@ -197,5 +202,26 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
         ),
       ),
     );
+  }
+}
+
+String getStoreCode(String storeName) {
+  switch (storeName) {
+    case '東勝山二丁目店':
+      return '61685';
+    case '上杉一丁目店':
+      return '61780';
+    case '仙台木町通一丁目店':
+      return '25658';
+    case '安養寺二丁目店':
+      return '61987';
+    case '利府青山店':
+      return '62012';
+    case '電力ビル店':
+      return '62060';
+    case '中山台店':
+      return '62219';
+    default:
+      return '';
   }
 }
