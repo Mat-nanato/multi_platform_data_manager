@@ -19,38 +19,30 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
   bool pdfLoading = false;
   String pdfAnalysisResult = '';
 
-  Future<String> _loadPdfText(int month) async {
+  Future<List<File>> _getStorePdfFiles() async {
     final dir = await getApplicationDocumentsDirectory();
 
     final storeCode = getStoreCode(widget.store);
 
-    final targetMonth =
-        '${DateTime.now().year}${month.toString().padLeft(2, '0')}';
-
     final files = dir
         .listSync()
         .whereType<File>()
-        .where(
-          (f) =>
-              f.path.endsWith('.pdf') &&
-              f.path.contains(storeCode) &&
-              f.path.contains(targetMonth),
-        )
+        .where((f) => f.path.endsWith('.pdf') && f.path.contains(storeCode))
         .toList();
 
-    if (files.isEmpty) {
-      throw Exception('$month月PDFが見つかりません');
-    }
+    files.sort((a, b) {
+      final reg = RegExp(r'_(\d{6})_');
 
-    final file = files.first;
+      final aMatch = reg.firstMatch(a.path);
+      final bMatch = reg.firstMatch(b.path);
 
-    final document = PdfDocument(inputBytes: file.readAsBytesSync());
+      final aYm = int.tryParse(aMatch?.group(1) ?? '0') ?? 0;
+      final bYm = int.tryParse(bMatch?.group(1) ?? '0') ?? 0;
 
-    final text = PdfTextExtractor(document).extractText();
+      return bYm.compareTo(aYm);
+    });
 
-    document.dispose();
-
-    return text;
+    return files;
   }
 
   // =========================
@@ -63,10 +55,27 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
     });
 
     try {
-      final now = DateTime.now();
+      final files = await _getStorePdfFiles();
 
-      final thisMonthText = await _loadPdfText(now.month);
-      final lastMonthText = await _loadPdfText(now.month - 1);
+      if (files.length < 2) {
+        throw Exception('比較用PDFが不足しています');
+      }
+
+      final latestPdf = files[0];
+      final previousPdf = files[1];
+
+      final latestDoc = PdfDocument(inputBytes: latestPdf.readAsBytesSync());
+
+      final previousDoc = PdfDocument(
+        inputBytes: previousPdf.readAsBytesSync(),
+      );
+
+      final thisMonthText = PdfTextExtractor(latestDoc).extractText();
+
+      final lastMonthText = PdfTextExtractor(previousDoc).extractText();
+
+      latestDoc.dispose();
+      previousDoc.dispose();
 
       final payload = {
         "store": widget.store,
