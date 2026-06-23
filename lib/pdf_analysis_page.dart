@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -130,7 +129,7 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
 - 異常値の特定
 - 改善提案
 
-特に営業利益の変化を最重要視すること。
+特に売上高合計と従業員給与と廃棄ロスと営業利益の先月との差異金額及び％表示で必ず回答する事。
 """,
             },
             {"role": "user", "content": jsonEncode(payload)},
