@@ -85,6 +85,28 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   bool loading = false;
   String result = '';
 
+  Future<Set<int>> _getImportedMonths() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final storeCode = getStoreCode(widget.store);
+
+    final months = <int>{};
+
+    for (final entity in dir.listSync()) {
+      final name = entity.path.split('/').last;
+
+      if (!name.endsWith('.pdf')) continue;
+      if (!name.contains(storeCode)) continue;
+
+      final match = RegExp(r'(\d{4})(\d{2})').firstMatch(name);
+
+      if (match != null) {
+        months.add(int.parse(match.group(2)!));
+      }
+    }
+
+    return months;
+  }
+
   Future<void> _showImportPdfMonthDialog() async {
     int selectedMonth = DateTime.now().month;
 
@@ -543,6 +565,11 @@ temperature単独より優先して判断すること。
   Future<void> _showPdfMonthDialog() async {
     int selectedMonth = DateTime.now().month;
 
+    // 取り込み済みの月を取得
+    final importedMonths = await _getImportedMonths();
+
+    if (!mounted) return;
+
     await showDialog(
       context: context,
       builder: (context) {
@@ -553,11 +580,21 @@ temperature単独より優先して判断すること。
               content: DropdownButton<int>(
                 value: selectedMonth,
                 isExpanded: true,
-                items: List.generate(
-                  12,
-                  (i) =>
-                      DropdownMenuItem(value: i + 1, child: Text('${i + 1}月')),
-                ),
+                items: List.generate(12, (i) {
+                  final month = i + 1;
+                  final imported = importedMonths.contains(month);
+
+                  return DropdownMenuItem(
+                    value: month,
+                    child: Text(
+                      '$month月',
+                      style: TextStyle(
+                        color: imported ? Colors.blue : Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  );
+                }),
                 onChanged: (v) {
                   if (v != null) {
                     setDialogState(() => selectedMonth = v);
@@ -569,7 +606,6 @@ temperature単独より優先して判断すること。
                   onPressed: () => Navigator.pop(context),
                   child: const Text('キャンセル'),
                 ),
-
                 ElevatedButton(
                   onPressed: () async {
                     debugPrint('OK BUTTON');
