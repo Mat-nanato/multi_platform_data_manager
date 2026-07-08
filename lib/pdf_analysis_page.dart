@@ -4,6 +4,9 @@ import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class PdfAnalysisPage extends StatefulWidget {
   final String store;
@@ -17,6 +20,26 @@ class PdfAnalysisPage extends StatefulWidget {
 class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
   bool pdfLoading = false;
   String pdfAnalysisResult = '';
+
+  Future<void> _saveAnalysis(String text) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString('pdfAnalysis_${widget.store}', text);
+  }
+
+  Future<void> _loadAnalysis() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      pdfAnalysisResult = prefs.getString('pdfAnalysis_${widget.store}') ?? '';
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAnalysis();
+  }
 
   Future<List<File>> _getStorePdfFiles() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -44,13 +67,66 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
     return files;
   }
 
+  Future<int> _getLastMonthCustomerTotal() async {
+    final now = DateTime.now();
+
+    final firstDay = DateTime(now.year, now.month - 1, 1);
+    final lastDay = DateTime(now.year, now.month, 0);
+
+    int total = 0;
+
+    for (
+      DateTime day = firstDay;
+      !day.isAfter(lastDay);
+      day = day.add(const Duration(days: 1))
+    ) {
+      final doc = await FirebaseFirestore.instance
+          .collection('daily_data')
+          .doc('${widget.store}_${DateFormat('yyyyMMdd').format(day)}')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        total += int.tryParse(data['客数']?.toString() ?? '0') ?? 0;
+      }
+    }
+
+    return total;
+  }
+
+  Future<int> _getThisMonthCustomerTotal() async {
+    final now = DateTime.now();
+
+    final firstDay = DateTime(now.year, now.month, 1);
+    final lastDay = now;
+
+    int total = 0;
+
+    for (
+      DateTime day = firstDay;
+      !day.isAfter(lastDay);
+      day = day.add(const Duration(days: 1))
+    ) {
+      final doc = await FirebaseFirestore.instance
+          .collection('daily_data')
+          .doc('${widget.store}_${DateFormat('yyyyMMdd').format(day)}')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        total += int.tryParse(data['客数']?.toString() ?? '0') ?? 0;
+      }
+    }
+
+    return total;
+  }
+
   // =========================
   // PDFボタン押下メイン処理
   // =========================
   Future<void> _analyzePdf() async {
     setState(() {
       pdfLoading = true;
-      pdfAnalysisResult = '';
     });
 
     try {
@@ -76,10 +152,15 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
       latestDoc.dispose();
       previousDoc.dispose();
 
+      final lastMonthCustomers = await _getLastMonthCustomerTotal();
+      final thisMonthCustomers = await _getThisMonthCustomerTotal();
+
       final payload = {
         "store": widget.store,
         "thisMonthPdf": thisMonthText,
         "lastMonthPdf": lastMonthText,
+        "lastMonthCustomers": lastMonthCustomers,
+        "thisMonthCustomers": thisMonthCustomers,
       };
 
       const url = "https://sales-ai-worker.app-lab-nanato.workers.dev";
@@ -97,9 +178,14 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
 
 以下の月次データをもとに、
 経営状況を「経営者向けレポート」として文章で説明してください。
+最新の月次データの売上高と先月の売上高の金額及び金額差と差異率を必ず最初に明記してください。
+最新の月次データの営業利益と先月の営業利益の金額及び金額差と差異率を必ず二番目に明記してください。
+先月客数合計と今月客数合計から、それぞれの1日平均客数を計算してください。
+平均客数の増減率も算出してください。
+その上で、売上の増減との関係、客単価の変化について考察してください。
 
 ## 必須ルール
-- 数値の羅列は禁止
+
 - 表形式禁止
 - JSON再出力禁止
 - 箇条書きは最小限（使っても良いが説明中心）
@@ -154,6 +240,8 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
         pdfAnalysisResult = content;
         pdfLoading = false;
       });
+
+      await _saveAnalysis(content);
     } catch (e) {
       setState(() {
         pdfAnalysisResult = "例外エラー: $e";

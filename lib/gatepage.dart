@@ -174,6 +174,33 @@ class _GatePageState extends State<GatePage> {
     });
   }
 
+  Future<int> getLastMonthCustomerTotal(String store) async {
+    final now = DateTime.now();
+
+    final firstDayLastMonth = DateTime(now.year, now.month - 1, 1);
+    final lastDayLastMonth = DateTime(now.year, now.month, 0);
+
+    int total = 0;
+
+    for (
+      DateTime day = firstDayLastMonth;
+      !day.isAfter(lastDayLastMonth);
+      day = day.add(const Duration(days: 1))
+    ) {
+      final doc = await FirebaseFirestore.instance
+          .collection('daily_data')
+          .doc('${store}_${DateFormat('yyyyMMdd').format(day)}')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        total += int.tryParse(data['客数']?.toString() ?? '0') ?? 0;
+      }
+    }
+
+    return total;
+  }
+
   Widget _buildInput(String label) {
     final controller = controllers[label]!;
     final unit = label == '客数' ? '人' : '円';

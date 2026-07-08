@@ -486,6 +486,8 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                     defaultBuilder: (context, day, focusedDay) {
                       String key = DateFormat('yyyy-MM-dd').format(day);
 
+                      debugPrint('calendar=$key weather=${_weatherMap[key]}');
+
                       final weather = _weatherMap[key];
 
                       return Container(
