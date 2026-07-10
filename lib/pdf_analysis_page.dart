@@ -121,6 +121,15 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
     return total;
   }
 
+  String? _getValue(String text, String item) {
+    final reg = RegExp('$item\\s+([\\d,▲△-]+)');
+    final match = reg.firstMatch(text);
+
+    if (match == null) return null;
+
+    return match.group(1);
+  }
+
   // =========================
   // PDFボタン押下メイン処理
   // =========================
@@ -155,10 +164,46 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
       final lastMonthCustomers = await _getLastMonthCustomerTotal();
       final thisMonthCustomers = await _getThisMonthCustomerTotal();
 
+      final thisData = {
+        "売上高合計": _getValue(thisMonthText, "売上高合計"),
+        "売上原価合計": _getValue(thisMonthText, "売上原価合計"),
+        "本部フィー": _getValue(thisMonthText, "本部フィー"),
+        "奨励金・助成金・支援金": _getValue(thisMonthText, "奨励金・助成金・支援金"),
+        "販売奨励金": _getValue(thisMonthText, "販売奨励金"),
+        "総収入": _getValue(thisMonthText, "総収入"),
+        "従業員給料": _getValue(thisMonthText, "従業員給料"),
+        "廃棄ロス": _getValue(thisMonthText, "廃棄ロス"),
+        "用度品代": _getValue(thisMonthText, "用度品代"),
+        "棚卸": _getValue(thisMonthText, "棚卸"),
+        "水道光熱費": _getValue(thisMonthText, "水道光熱費"),
+        "清掃費": _getValue(thisMonthText, "清掃費"),
+        "営業雑費": _getValue(thisMonthText, "営業雑費"),
+        "現金過不足": _getValue(thisMonthText, "現金過不足"),
+        "営業利益": _getValue(thisMonthText, "営業利益"),
+      };
+
+      final lastData = {
+        "売上高合計": _getValue(lastMonthText, "売上高合計"),
+        "売上原価合計": _getValue(lastMonthText, "売上原価合計"),
+        "本部フィー": _getValue(lastMonthText, "本部フィー"),
+        "奨励金・助成金・支援金": _getValue(lastMonthText, "奨励金・助成金・支援金"),
+        "販売奨励金": _getValue(lastMonthText, "販売奨励金"),
+        "総収入": _getValue(lastMonthText, "総収入"),
+        "従業員給料": _getValue(lastMonthText, "従業員給料"),
+        "廃棄ロス": _getValue(lastMonthText, "廃棄ロス"),
+        "用度品代": _getValue(lastMonthText, "用度品代"),
+        "棚卸": _getValue(lastMonthText, "棚卸"),
+        "水道光熱費": _getValue(lastMonthText, "水道光熱費"),
+        "清掃費": _getValue(lastMonthText, "清掃費"),
+        "営業雑費": _getValue(lastMonthText, "営業雑費"),
+        "現金過不足": _getValue(lastMonthText, "現金過不足"),
+        "営業利益": _getValue(lastMonthText, "営業利益"),
+      };
+
       final payload = {
         "store": widget.store,
-        "thisMonthPdf": thisMonthText,
-        "lastMonthPdf": lastMonthText,
+        "thisMonth": thisData,
+        "lastMonth": lastData,
         "lastMonthCustomers": lastMonthCustomers,
         "thisMonthCustomers": thisMonthCustomers,
       };
