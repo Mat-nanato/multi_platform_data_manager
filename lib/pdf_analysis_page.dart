@@ -122,8 +122,11 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
   }
 
   String? _getValue(String text, String item) {
-    final reg = RegExp('$item\\s+([\\d,▲△-]+)');
-    final match = reg.firstMatch(text);
+    final normalizedText = text.replaceAll(RegExp(r'[\s　]+'), '');
+    final normalizedItem = item.replaceAll(RegExp(r'[\s　]+'), '');
+
+    final reg = RegExp('$normalizedItem([\\d,▲△-]+)');
+    final match = reg.firstMatch(normalizedText);
 
     if (match == null) return null;
 
@@ -165,39 +168,39 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
       final thisMonthCustomers = await _getThisMonthCustomerTotal();
 
       final thisData = {
-        "売上高合計": _getValue(thisMonthText, "売上高合計"),
-        "売上原価合計": _getValue(thisMonthText, "売上原価合計"),
-        "本部フィー": _getValue(thisMonthText, "本部フィー"),
-        "奨励金・助成金・支援金": _getValue(thisMonthText, "奨励金・助成金・支援金"),
-        "販売奨励金": _getValue(thisMonthText, "販売奨励金"),
-        "総収入": _getValue(thisMonthText, "総収入"),
-        "従業員給料": _getValue(thisMonthText, "従業員給料"),
-        "廃棄ロス": _getValue(thisMonthText, "廃棄ロス"),
-        "用度品代": _getValue(thisMonthText, "用度品代"),
-        "棚卸": _getValue(thisMonthText, "棚卸"),
-        "水道光熱費": _getValue(thisMonthText, "水道光熱費"),
-        "清掃費": _getValue(thisMonthText, "清掃費"),
-        "営業雑費": _getValue(thisMonthText, "営業雑費"),
-        "現金過不足": _getValue(thisMonthText, "現金過不足"),
-        "営業利益": _getValue(thisMonthText, "営業利益"),
+        "売上高合計": _getValue(thisMonthText, "売　上　高　合　計"),
+        "売上原価合計": _getValue(thisMonthText, "売　上　原　価　合　計"),
+        "本部フィー": _getValue(thisMonthText, "１．本　部　フ　ィ　ー"),
+        "分担金・助成金・支援金": _getValue(thisMonthText, "２．分担金・助成金・支援金"),
+        "販売奨励金": _getValue(thisMonthText, "４．販　売　奨　励　金"),
+        "総収入": _getValue(thisMonthText, "Ⅴ 総収入（　Ⅰー　Ⅱ ー　Ⅳ ）"),
+        "従業員給料": _getValue(thisMonthText, "１．従　業　員　給　料"),
+        "廃棄ロス": _getValue(thisMonthText, "（　廃　棄　ロ　ス　）"),
+        "用度品代": _getValue(thisMonthText, "７．用　度　品　代"),
+        "棚卸": _getValue(thisMonthText, "６．棚　卸　増　減"),
+        "水道光熱費": _getValue(thisMonthText, "９．水　道　光　熱　費"),
+        "清掃費": _getValue(thisMonthText, "１０．清　　掃　　費"),
+        "営業雑費": _getValue(thisMonthText, "１３．営　業　雑　費"),
+        "現金過不足": _getValue(thisMonthText, "１５．現　金　過　不　足"),
+        "営業利益": _getValue(thisMonthText, "営　業　利　益（　Ⅴ ー　Ⅵ ）"),
       };
 
       final lastData = {
-        "売上高合計": _getValue(lastMonthText, "売上高合計"),
-        "売上原価合計": _getValue(lastMonthText, "売上原価合計"),
-        "本部フィー": _getValue(lastMonthText, "本部フィー"),
-        "奨励金・助成金・支援金": _getValue(lastMonthText, "奨励金・助成金・支援金"),
-        "販売奨励金": _getValue(lastMonthText, "販売奨励金"),
-        "総収入": _getValue(lastMonthText, "総収入"),
-        "従業員給料": _getValue(lastMonthText, "従業員給料"),
-        "廃棄ロス": _getValue(lastMonthText, "廃棄ロス"),
-        "用度品代": _getValue(lastMonthText, "用度品代"),
-        "棚卸": _getValue(lastMonthText, "棚卸"),
-        "水道光熱費": _getValue(lastMonthText, "水道光熱費"),
-        "清掃費": _getValue(lastMonthText, "清掃費"),
-        "営業雑費": _getValue(lastMonthText, "営業雑費"),
-        "現金過不足": _getValue(lastMonthText, "現金過不足"),
-        "営業利益": _getValue(lastMonthText, "営業利益"),
+        "売上高合計": _getValue(lastMonthText, "売　上　高　合　計"),
+        "売上原価合計": _getValue(lastMonthText, "売　上　原　価　合　計"),
+        "本部フィー": _getValue(lastMonthText, "１．本　部　フ　ィ　ー"),
+        "分担金・助成金・支援金": _getValue(lastMonthText, "２．分担金・助成金・支援金"),
+        "販売奨励金": _getValue(lastMonthText, "４．販　売　奨　励　金"),
+        "総収入": _getValue(lastMonthText, "Ⅴ 総収入（　Ⅰー　Ⅱ ー　Ⅳ ）"),
+        "従業員給料": _getValue(lastMonthText, "１．従　業　員　給　料"),
+        "廃棄ロス": _getValue(lastMonthText, "（　廃　棄　ロ　ス　）"),
+        "用度品代": _getValue(lastMonthText, "７．用　度　品　代"),
+        "棚卸": _getValue(lastMonthText, "６．棚　卸　増　減"),
+        "水道光熱費": _getValue(lastMonthText, "９．水　道　光　熱　費"),
+        "清掃費": _getValue(lastMonthText, "１０．清　　掃　　費"),
+        "営業雑費": _getValue(lastMonthText, "１３．営　業　雑　費"),
+        "現金過不足": _getValue(lastMonthText, "１５．現　金　過　不　足"),
+        "営業利益": _getValue(lastMonthText, "営　業　利　益（　Ⅴ ー　Ⅵ ）"),
       };
 
       final payload = {
@@ -220,13 +223,7 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
               "role": "system",
               "content": """
 あなたはコンビニ経営のプロ経営コンサルタントです。
-このPDFは表形式です。
-
-必ず
-「左側の項目」
-「右側の金額」
-を1対1で対応させてください。
-
+最新のデータは先月の結果として説明してください。
 存在しない数字は推測しないでください。
 以下の月次データ（項目の右隣の実績値のみ見てください）をもとに、
 経営状況を「経営者向けレポート」として文章で説明してください。
@@ -236,9 +233,9 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
 
 計算式
 ・先月1日平均客数 = 先月客数合計 ÷ 先月の日数
-・今月1日平均客数 = 今月客数合計 ÷ 今月の経過日数
-・増減率(%) = ((今月1日平均客数 - 先月1日平均客数) ÷ 先月1日平均客数) × 100
-その上で、売上の増減との関係、客単価の変化について考察してください。
+・先々月1日平均客数 = 先々月客数合計 ÷ 先々月の日数
+
+その上で、売上の増減と増減率との関係、売上高合計と客数から計算した客単価の変化について考察してください。
 
 ## 必須ルール
 
