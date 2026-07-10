@@ -78,6 +78,11 @@ dependencies:
   # =========================
   provider: ^6.1.2
 
+  # =========================
+  # PDF → Image
+  # =========================
+  pdfx: ^2.9.2
+
 dependency_overrides:
   firebase_core: 3.13.0
   cloud_firestore: 5.6.6

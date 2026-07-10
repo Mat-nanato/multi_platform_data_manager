@@ -499,7 +499,7 @@ temperature単独より優先して判断すること。
       }
 
       final data = jsonDecode(decoded);
-      final content = data['choices']?[0]?['message']?['content'];
+      final content = data['analysis'] ?? "解析結果なし";
 
       logger.i("CONTENT TYPE");
       logger.i(content.runtimeType);

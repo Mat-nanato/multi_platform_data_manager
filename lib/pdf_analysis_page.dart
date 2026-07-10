@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -67,11 +67,15 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
     return files;
   }
 
-  Future<int> _getLastMonthCustomerTotal() async {
-    final now = DateTime.now();
+  Future<String> _pdfToBase64(File file) async {
+    final bytes = await file.readAsBytes();
+    return base64Encode(bytes);
+  }
 
-    final firstDay = DateTime(now.year, now.month - 1, 1);
-    final lastDay = DateTime(now.year, now.month, 0);
+  Future<int> _getCustomerTotal(DateTime targetMonth) async {
+    final firstDay = DateTime(targetMonth.year, targetMonth.month, 1);
+
+    final lastDay = DateTime(targetMonth.year, targetMonth.month + 1, 0);
 
     int total = 0;
 
@@ -87,50 +91,12 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
 
       if (doc.exists) {
         final data = doc.data()!;
+
         total += int.tryParse(data['客数']?.toString() ?? '0') ?? 0;
       }
     }
 
     return total;
-  }
-
-  Future<int> _getThisMonthCustomerTotal() async {
-    final now = DateTime.now();
-
-    final firstDay = DateTime(now.year, now.month, 1);
-    final lastDay = now;
-
-    int total = 0;
-
-    for (
-      DateTime day = firstDay;
-      !day.isAfter(lastDay);
-      day = day.add(const Duration(days: 1))
-    ) {
-      final doc = await FirebaseFirestore.instance
-          .collection('daily_data')
-          .doc('${widget.store}_${DateFormat('yyyyMMdd').format(day)}')
-          .get();
-
-      if (doc.exists) {
-        final data = doc.data()!;
-        total += int.tryParse(data['客数']?.toString() ?? '0') ?? 0;
-      }
-    }
-
-    return total;
-  }
-
-  String? _getValue(String text, String item) {
-    final normalizedText = text.replaceAll(RegExp(r'[\s　]+'), '');
-    final normalizedItem = item.replaceAll(RegExp(r'[\s　]+'), '');
-
-    final reg = RegExp('$normalizedItem([\\d,▲△-]+)');
-    final match = reg.firstMatch(normalizedText);
-
-    if (match == null) return null;
-
-    return match.group(1);
   }
 
   // =========================
@@ -151,65 +117,37 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
       final latestPdf = files[0];
       final previousPdf = files[1];
 
-      final latestDoc = PdfDocument(inputBytes: latestPdf.readAsBytesSync());
+      final latestBase64 = await _pdfToBase64(latestPdf);
+      final previousBase64 = await _pdfToBase64(previousPdf);
 
-      final previousDoc = PdfDocument(
-        inputBytes: previousPdf.readAsBytesSync(),
+      // PDFファイル名の年月を取得
+      final reg = RegExp(r'_(\d{6})_');
+
+      final latestMatch = reg.firstMatch(latestPdf.path);
+      final previousMatch = reg.firstMatch(previousPdf.path);
+
+      if (latestMatch == null || previousMatch == null) {
+        throw Exception('PDF年月が取得できません');
+      }
+
+      final latestYm = latestMatch.group(1)!;
+      final previousYm = previousMatch.group(1)!;
+
+      // yyyyMM → DateTime
+      final latestMonth = DateTime(
+        int.parse(latestYm.substring(0, 4)),
+        int.parse(latestYm.substring(4, 6)),
       );
 
-      final thisMonthText = PdfTextExtractor(latestDoc).extractText();
+      final previousMonth = DateTime(
+        int.parse(previousYm.substring(0, 4)),
+        int.parse(previousYm.substring(4, 6)),
+      );
 
-      final lastMonthText = PdfTextExtractor(previousDoc).extractText();
+      // PDF年月で客数取得
+      final lastMonthCustomers = await _getCustomerTotal(latestMonth);
 
-      latestDoc.dispose();
-      previousDoc.dispose();
-
-      final lastMonthCustomers = await _getLastMonthCustomerTotal();
-      final thisMonthCustomers = await _getThisMonthCustomerTotal();
-
-      final thisData = {
-        "売上高合計": _getValue(thisMonthText, "売　上　高　合　計"),
-        "売上原価合計": _getValue(thisMonthText, "売　上　原　価　合　計"),
-        "本部フィー": _getValue(thisMonthText, "１．本　部　フ　ィ　ー"),
-        "分担金・助成金・支援金": _getValue(thisMonthText, "２．分担金・助成金・支援金"),
-        "販売奨励金": _getValue(thisMonthText, "４．販　売　奨　励　金"),
-        "総収入": _getValue(thisMonthText, "Ⅴ 総収入（　Ⅰー　Ⅱ ー　Ⅳ ）"),
-        "従業員給料": _getValue(thisMonthText, "１．従　業　員　給　料"),
-        "廃棄ロス": _getValue(thisMonthText, "（　廃　棄　ロ　ス　）"),
-        "用度品代": _getValue(thisMonthText, "７．用　度　品　代"),
-        "棚卸": _getValue(thisMonthText, "６．棚　卸　増　減"),
-        "水道光熱費": _getValue(thisMonthText, "９．水　道　光　熱　費"),
-        "清掃費": _getValue(thisMonthText, "１０．清　　掃　　費"),
-        "営業雑費": _getValue(thisMonthText, "１３．営　業　雑　費"),
-        "現金過不足": _getValue(thisMonthText, "１５．現　金　過　不　足"),
-        "営業利益": _getValue(thisMonthText, "営　業　利　益（　Ⅴ ー　Ⅵ ）"),
-      };
-
-      final lastData = {
-        "売上高合計": _getValue(lastMonthText, "売　上　高　合　計"),
-        "売上原価合計": _getValue(lastMonthText, "売　上　原　価　合　計"),
-        "本部フィー": _getValue(lastMonthText, "１．本　部　フ　ィ　ー"),
-        "分担金・助成金・支援金": _getValue(lastMonthText, "２．分担金・助成金・支援金"),
-        "販売奨励金": _getValue(lastMonthText, "４．販　売　奨　励　金"),
-        "総収入": _getValue(lastMonthText, "Ⅴ 総収入（　Ⅰー　Ⅱ ー　Ⅳ ）"),
-        "従業員給料": _getValue(lastMonthText, "１．従　業　員　給　料"),
-        "廃棄ロス": _getValue(lastMonthText, "（　廃　棄　ロ　ス　）"),
-        "用度品代": _getValue(lastMonthText, "７．用　度　品　代"),
-        "棚卸": _getValue(lastMonthText, "６．棚　卸　増　減"),
-        "水道光熱費": _getValue(lastMonthText, "９．水　道　光　熱　費"),
-        "清掃費": _getValue(lastMonthText, "１０．清　　掃　　費"),
-        "営業雑費": _getValue(lastMonthText, "１３．営　業　雑　費"),
-        "現金過不足": _getValue(lastMonthText, "１５．現　金　過　不　足"),
-        "営業利益": _getValue(lastMonthText, "営　業　利　益（　Ⅴ ー　Ⅵ ）"),
-      };
-
-      final payload = {
-        "store": widget.store,
-        "thisMonth": thisData,
-        "lastMonth": lastData,
-        "lastMonthCustomers": lastMonthCustomers,
-        "thisMonthCustomers": thisMonthCustomers,
-      };
+      final previousMonthCustomers = await _getCustomerTotal(previousMonth);
 
       const url = "https://sales-ai-worker.app-lab-nanato.workers.dev";
 
@@ -217,62 +155,14 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
         Uri.parse(url),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "type": "chat",
-          "messages": [
-            {
-              "role": "system",
-              "content": """
-あなたはコンビニ経営のプロ経営コンサルタントです。
-最新のデータは先月の結果として説明してください。
-存在しない数字は推測しないでください。
-以下の月次データ（項目の右隣の実績値のみ見てください）をもとに、
-経営状況を「経営者向けレポート」として文章で説明してください。
-最新の月次データの売上高合計と先月の売上高合計の金額及び金額差と差異率を必ず最初に明記してください。
-最新の月次データの営業利益（　Ⅴ ー Ⅵ　 ）と先月の営業利益（　Ⅴ ー Ⅵ　 ）の金額及び金額差と差異率を必ず二番目に明記してください。
-店舗はコンビニエンスストアで、休業日はありません。営業日数で補正しないでください。
+          "type": "pdf_analysis",
+          "store": widget.store,
 
-計算式
-・先月1日平均客数 = 先月客数合計 ÷ 先月の日数
-・先々月1日平均客数 = 先々月客数合計 ÷ 先々月の日数
+          "latestPdf": latestBase64,
+          "previousPdf": previousBase64,
 
-その上で、売上の増減と増減率との関係、売上高合計と客数から計算した客単価の変化について考察してください。
-
-## 必須ルール
-
-- 表形式禁止
-- JSON再出力禁止
-- 箇条書きは最小限（使っても良いが説明中心）
-- 必ず「なぜそうなったか」を推測して説明する
-
-## 分析対象
-- 売上高合計
-- 売上原価合計
-- 本部フィー
-- 奨励金・助成金・支援金
-- 販売奨励金
-- 総収入
-- 従業員給料
-- 廃棄ロス
-- 用度品代
-- 棚卸
-- 水道光熱費
-- 清掃費
-- 営業雑費
-- 現金過不足
-- 営業利益（　Ⅴ ー Ⅵ　 ）
-
-## 分析観点
-- 売上の増減理由
-- 利益の増減理由
-- コスト構造の変化
-- 異常値の特定
-- 改善提案
-
-特に売上高合計と従業員給料と廃棄ロスと営業利益（　Ⅴ ー Ⅵ　 ）の先月との差異金額及び％表示で必ず回答する事。
-""",
-            },
-            {"role": "user", "content": jsonEncode(payload)},
-          ],
+          "lastMonthCustomers": lastMonthCustomers,
+          "previousMonthCustomers": previousMonthCustomers,
         }),
       );
 
@@ -287,12 +177,28 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
       }
 
       final data = jsonDecode(decoded);
-      final content = data['choices'][0]['message']['content'];
+
+      print("WORKER RESPONSE:");
+      print(data);
+
+      String content;
+
+      if (data['choices'] != null) {
+        content = data['choices'][0]['message']['content'];
+      } else if (data['result'] != null) {
+        content = data['result'];
+      } else if (data['analysis'] != null) {
+        content = data['analysis'];
+      } else {
+        content = "解析結果が取得できません\n\n$decoded";
+      }
 
       setState(() {
         pdfAnalysisResult = content;
         pdfLoading = false;
       });
+
+      await _saveAnalysis(content);
 
       await _saveAnalysis(content);
     } catch (e) {
