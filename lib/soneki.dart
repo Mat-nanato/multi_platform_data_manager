@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SonEkiPage extends StatefulWidget {
   const SonEkiPage({super.key});
@@ -65,6 +66,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
     super.initState();
     _loadPdfData();
     _loadAnalysisResult();
+    _loadBExpenseSetting();
   }
 
   /// =========================
@@ -132,6 +134,32 @@ class _SonEkiPageState extends State<SonEkiPage> {
     } else {
       analysisResult = '';
     }
+
+    setState(() {});
+  }
+
+  Future<void> _saveBExpenseSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setInt("depreciationCount", depreciationCount);
+    await prefs.setInt("managerCount", managerCount);
+    await prefs.setInt("storeManagerCount", storeManagerCount);
+    await prefs.setInt("employeeManageCount", employeeManageCount);
+    await prefs.setInt("welfareCount", welfareCount);
+    await prefs.setInt("retirementCount", retirementCount);
+    await prefs.setInt("transportCount", transportCount);
+  }
+
+  Future<void> _loadBExpenseSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    depreciationCount = prefs.getInt("depreciationCount") ?? 1;
+    managerCount = prefs.getInt("managerCount") ?? 0;
+    storeManagerCount = prefs.getInt("storeManagerCount") ?? 0;
+    employeeManageCount = prefs.getInt("employeeManageCount") ?? 0;
+    welfareCount = prefs.getInt("welfareCount") ?? 0;
+    retirementCount = prefs.getInt("retirementCount") ?? 1;
+    transportCount = prefs.getInt("transportCount") ?? 0;
 
     setState(() {});
   }
@@ -252,8 +280,24 @@ class _SonEkiPageState extends State<SonEkiPage> {
     });
 
     try {
-      final currentMonth = DateTime.now().month;
-      final previousMonth = currentMonth - 1;
+      // 登録済みPDFから最新2か月を取得
+      final months = pdfMap.keys
+          .where((e) => e.startsWith('${selectedStore}_${selectedYear}_'))
+          .map((e) => int.parse(e.split('_').last))
+          .toList();
+
+      months.sort();
+
+      if (months.length < 2) {
+        setState(() {
+          analysisResult = "比較するPDFが2か月分以上登録されていません";
+          isAnalyzing = false;
+        });
+        return;
+      }
+
+      final currentMonth = months.last;
+      final previousMonth = months[months.length - 2];
 
       final currentSnapshot = await _firestore
           .collection("profit_summary")
@@ -269,7 +313,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
 
       if (currentSnapshot.docs.isEmpty || previousSnapshot.docs.isEmpty) {
         setState(() {
-          analysisResult = "今月または先月のデータがありません";
+          analysisResult = "$currentMonth月または$previousMonth月の損益データがありません";
           isAnalyzing = false;
         });
         return;
@@ -303,6 +347,8 @@ class _SonEkiPageState extends State<SonEkiPage> {
         previousProfit += (data["operatingProfit"] ?? 0) as int;
       }
 
+      final bExpense = _bExpenseTotal();
+
       final payload = {
         "currentMonth": {
           "year": selectedYear,
@@ -316,17 +362,12 @@ class _SonEkiPageState extends State<SonEkiPage> {
           "salesTotal": previousSales,
           "profitTotal": previousProfit,
         },
+        "bExpenseTotal": bExpense,
         "stores": stores,
       };
 
       final result = await analyzePdfData(payload);
 
-      await _saveAnalysisResult(result);
-
-      setState(() {
-        analysisResult = result;
-        isAnalyzing = false;
-      });
       await _saveAnalysisResult(result);
 
       setState(() {
@@ -455,18 +496,23 @@ class _SonEkiPageState extends State<SonEkiPage> {
                     setState(() {
                       depreciationCount = v;
                     });
+
+                    _saveBExpenseSetting();
                   }),
 
-                  _buildBExpenseRow('管理者', '名', 400000, managerCount, (v) {
+                  _buildBExpenseRow('管理者数', '名', 400000, managerCount, (v) {
                     setState(() {
                       managerCount = v;
                     });
+
+                    _saveBExpenseSetting();
                   }),
 
                   _buildBExpenseRow('店長数', '名', 250000, storeManagerCount, (v) {
                     setState(() {
                       storeManagerCount = v;
                     });
+                    _saveBExpenseSetting();
                   }),
 
                   _buildBExpenseRow('社員管理費', '名', 80000, employeeManageCount, (
@@ -475,6 +521,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
                     setState(() {
                       employeeManageCount = v;
                     });
+                    _saveBExpenseSetting();
                   }),
 
                   _buildBExpenseRow('法定福利・社会保険料', '名', 88888, welfareCount, (
@@ -483,6 +530,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
                     setState(() {
                       welfareCount = v;
                     });
+                    _saveBExpenseSetting();
                   }),
 
                   _buildBExpenseRow('退職金積立金', '店舗', 10000, retirementCount, (
@@ -491,12 +539,14 @@ class _SonEkiPageState extends State<SonEkiPage> {
                     setState(() {
                       retirementCount = v;
                     });
+                    _saveBExpenseSetting();
                   }),
 
                   _buildBExpenseRow('移動交通費', '名', 50000, transportCount, (v) {
                     setState(() {
                       transportCount = v;
                     });
+                    _saveBExpenseSetting();
                   }),
 
                   const SizedBox(height: 10),
@@ -627,10 +677,15 @@ ${jsonEncode(payload["previousMonth"])}
 【店舗別】
 ${jsonEncode(payload["stores"])}
 
+【B勘定管理費合計】
+${payload["bExpenseTotal"]}円
+
 以下の内容を分析してください。
 
 ・全店舗売上の前月比較
 ・営業利益の前月比較
+・B勘定管理費合計を差し引いた営業利益額を計算
+・差し引き後の利益が黒字か赤字かを評価
 ・売上・利益の増減率
 ・店舗別の好調・不調
 ・改善すべき店舗
@@ -641,15 +696,10 @@ ${jsonEncode(payload["stores"])}
 ''';
 
     final response = await http.post(
-  Uri.parse('https://sales-ai-worker.app-lab-nanato.workers.dev'),
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: jsonEncode({
-    "type": "profit_analysis",
-    "prompt": prompt,
-  }),
-);
+      Uri.parse('https://sales-ai-worker.app-lab-nanato.workers.dev'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({"type": "profit_analysis", "prompt": prompt}),
+    );
 
     if (response.statusCode != 200) {
       throw Exception(response.body);
@@ -657,7 +707,7 @@ ${jsonEncode(payload["stores"])}
 
     final json = jsonDecode(response.body);
 
-return json["analysis"];
+    return json["analysis"];
   }
 }
 

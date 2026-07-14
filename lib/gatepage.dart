@@ -174,6 +174,20 @@ class _GatePageState extends State<GatePage> {
     });
   }
 
+  Future<void> _changeDate(int diff) async {
+    if (selectedDate == null) return;
+
+    final newDate = selectedDate!.add(Duration(days: diff));
+
+    setState(() {
+      selectedDate = newDate;
+    });
+
+    if (selectedStore != null) {
+      await _loadDataFor(newDate, selectedStore!);
+    }
+  }
+
   Future<int> getLastMonthCustomerTotal(String store) async {
     final now = DateTime.now();
 
@@ -235,120 +249,131 @@ class _GatePageState extends State<GatePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            CalendarDatePicker(
-              initialDate: selectedDate ?? DateTime.now(),
-              firstDate: DateTime(2020),
-              lastDate: DateTime(2030),
-              onDateChanged: (date) {
-                setState(() {
-                  selectedDate = date;
-                });
-                if (selectedStore != null) {
-                  _loadDataFor(date, selectedStore!);
-                }
-              },
-            ),
-            const SizedBox(height: 20),
-            if (availableStores.isNotEmpty)
-              DropdownButtonFormField<String>(
-                initialValue: selectedStore, // ← value → initialValue
-                hint: const Text('店舗を選択'),
-                items: availableStores.map((store) {
-                  return DropdownMenuItem<String>(
-                    value: store,
-                    child: Text(store),
-                  );
-                }).toList(),
-                onChanged: (value) {
+      body: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity == null) return;
+
+          // 左へスワイプ → 翌日
+          if (details.primaryVelocity! < 0) {
+            _changeDate(1);
+          }
+
+          // 右へスワイプ → 前日
+          if (details.primaryVelocity! > 0) {
+            _changeDate(-1);
+          }
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              CalendarDatePicker(
+                key: ValueKey(selectedDate),
+                initialDate: selectedDate ?? DateTime.now(),
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+                onDateChanged: (date) {
                   setState(() {
-                    selectedStore = value;
+                    selectedDate = date;
                   });
-                  if (selectedDate != null && value != null) {
-                    _loadDataFor(selectedDate!, value);
+                  if (selectedStore != null) {
+                    _loadDataFor(date, selectedStore!);
                   }
                 },
               ),
-            const SizedBox(height: 20),
-            if (selectedStore != null) ...[
-              if (selectedStore != '事業部')
-                ...controllers.keys.map((label) => _buildInput(label)),
-              const SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: () async {
-                  debugPrint('【次へ】押下');
-
-                  if (selectedStore == null) {
-                    debugPrint('selectedStore == null');
-                    return;
-                  }
-
-                  debugPrint('selectedStore = $selectedStore');
-
-                  // 事業部なら別ページへ
-                  if (selectedStore == '事業部') {
-                    debugPrint('SonEkiPageへ遷移');
-
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SonEkiPage()),
+              const SizedBox(height: 20),
+              if (availableStores.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  initialValue: selectedStore,
+                  hint: const Text('店舗を選択'),
+                  items: availableStores.map((store) {
+                    return DropdownMenuItem<String>(
+                      value: store,
+                      child: Text(store),
                     );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedStore = value;
+                    });
+                    if (selectedDate != null && value != null) {
+                      _loadDataFor(selectedDate!, value);
+                    }
+                  },
+                ),
+              const SizedBox(height: 20),
+              if (selectedStore != null) ...[
+                if (selectedStore != '事業部')
+                  ...controllers.keys.map((label) => _buildInput(label)),
+                const SizedBox(height: 30),
+                ElevatedButton(
+                  onPressed: () async {
+                    debugPrint('【次へ】押下');
 
-                    debugPrint('SonEkiPageから復帰');
-                    return;
-                  }
-
-                  try {
-                    final actual = _cleanNumber(controllers['売上']!.text);
-                    final actualWaste = _cleanNumber(
-                      controllers['廃棄（原価）']!.text,
-                    );
-
-                    debugPrint('actual = $actual');
-                    debugPrint('actualWaste = $actualWaste');
-
-                    final storeInfo = storeInfoMap[selectedStore!];
-
-                    if (storeInfo == null) {
-                      debugPrint('storeInfo == null');
+                    if (selectedStore == null) {
+                      debugPrint('selectedStore == null');
                       return;
                     }
 
-                    debugPrint(
-                      'storeInfo: '
-                      '${storeInfo.address}, '
-                      '${storeInfo.lat}, '
-                      '${storeInfo.lon}',
-                    );
+                    debugPrint('selectedStore = $selectedStore');
 
-                    debugPrint('onEnter開始');
+                    if (selectedStore == '事業部') {
+                      debugPrint('SonEkiPageへ遷移');
 
-                    widget.onEnter(
-                      selectedStore!,
-                      storeInfo.address,
-                      storeInfo.lat,
-                      storeInfo.lon,
-                      actual,
-                      actualWaste,
-                    );
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SonEkiPage()),
+                      );
 
-                    debugPrint('onEnter終了');
+                      debugPrint('SonEkiPageから復帰');
+                      return;
+                    }
 
-                    await _saveData();
+                    try {
+                      final actual = _cleanNumber(controllers['売上']!.text);
+                      final actualWaste = _cleanNumber(
+                        controllers['廃棄（原価）']!.text,
+                      );
 
-                    debugPrint('_saveData終了');
-                  } catch (e, st) {
-                    debugPrint('【エラー】$e');
-                    debugPrint(st.toString());
-                  }
-                },
-                child: const Text('次へ'),
-              ),
+                      debugPrint('actual = $actual');
+                      debugPrint('actualWaste = $actualWaste');
+
+                      final storeInfo = storeInfoMap[selectedStore!];
+
+                      if (storeInfo == null) {
+                        debugPrint('storeInfo == null');
+                        return;
+                      }
+
+                      debugPrint(
+                        'storeInfo: '
+                        '${storeInfo.address}, '
+                        '${storeInfo.lat}, '
+                        '${storeInfo.lon}',
+                      );
+
+                      widget.onEnter(
+                        selectedStore!,
+                        storeInfo.address,
+                        storeInfo.lat,
+                        storeInfo.lon,
+                        actual,
+                        actualWaste,
+                      );
+
+                      await _saveData();
+
+                      debugPrint('_saveData終了');
+                    } catch (e, st) {
+                      debugPrint('【エラー】$e');
+                      debugPrint(st.toString());
+                    }
+                  },
+                  child: const Text('次へ'),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
