@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_storage/firebase_storage.dart';
@@ -81,6 +80,12 @@ class _SonEkiPageState extends State<SonEkiPage> {
         .where((f) => f.path.endsWith('.pdf'))
         .toList();
 
+    debugPrint("PDF数=${files.length}");
+
+    for (final f in files) {
+      debugPrint(f.path);
+    }
+
     for (final file in files) {
       final name = file.path.split('/').last;
 
@@ -96,11 +101,17 @@ class _SonEkiPageState extends State<SonEkiPage> {
 
       final month = int.parse(ym.substring(4, 6));
 
+      debugPrint("FILE NAME=$name");
+
       // 店舗コードから店舗名取得
       for (final store in stores) {
         final code = getStoreCode(store);
 
+        debugPrint("$store code=$code match=${name.contains(code)}");
+
         if (name.contains(code)) {
+          debugPrint("登録=$store $year年$month月");
+
           pdfMap['${store}_${year}_$month'] = file.path;
         }
       }
@@ -184,10 +195,13 @@ class _SonEkiPageState extends State<SonEkiPage> {
 
     if (path == null) return;
 
-    // PDF文字抽出
-    final pdfText = await _extractPdfText(path);
-
-    final summary = parseProfitLoss(pdfText);
+    final summary = <String, dynamic>{
+      "salesTotal": 0,
+      "operatingProfit": 0,
+      "grossProfit": 0,
+      "totalIncome": 0,
+      "employeeSalary": 0,
+    };
 
     // Firestoreへ保存
     await _firestore
@@ -201,7 +215,6 @@ class _SonEkiPageState extends State<SonEkiPage> {
           "updatedAt": FieldValue.serverTimestamp(),
         });
 
-    debugPrint(pdfText);
     if (!mounted) return;
     // PDF表示画面
     Navigator.push(
@@ -224,43 +237,66 @@ class _SonEkiPageState extends State<SonEkiPage> {
 
     await storageRef.putFile(file);
 
-    final downloadUrl = await storageRef.getDownloadURL();
-
-    pdfMap[key] = downloadUrl;
+    pdfMap[key] = path;
 
     setState(() {});
   }
 
   Map<String, dynamic> parseProfitLoss(String text) {
-    return {
+    final data = {
       "salesTotal": _findValueByLine(text, "売上高合計"),
       "operatingProfit": _findValueByLine(text, "営業利益"),
       "grossProfit": _findValueByLine(text, "営業総利益"),
       "totalIncome": _findValueByLine(text, "総収入"),
       "employeeSalary": _findValueByLine(text, "従業員給与"),
     };
+
+    debugPrint("===== 抽出結果 =====");
+    debugPrint(jsonEncode(data));
+
+    return data;
   }
 
   int _findValueByLine(String text, String keyword) {
-    final lines = text.split('\n');
+    final normalizedText = text
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll('　', '')
+        .replaceAll('\u00a0', '');
 
-    for (final line in lines) {
-      final normalized = line.replaceAll(' ', '').replaceAll('　', '');
+    final index = normalizedText.indexOf(keyword);
 
-      if (normalized.contains(keyword)) {
-        final match = RegExp(r'[\d,]+').firstMatch(line);
+    debugPrint("検索=$keyword index=$index");
 
-        if (match != null) {
-          return int.parse(match.group(0)!.replaceAll(',', ''));
-        }
-      }
+    if (index == -1) {
+      debugPrint("$keyword 見つからない");
+      return 0;
     }
+
+    final end = (index + keyword.length + 200)
+        .clamp(0, normalizedText.length)
+        .toInt();
+
+    final after = normalizedText.substring(index + keyword.length, end);
+
+    debugPrint("$keyword 後ろ=$after");
+
+    final match = RegExp(r'\d[\d,]*').firstMatch(after);
+
+    if (match != null) {
+      final int value = int.parse(match.group(0)!.replaceAll(',', ''));
+
+      debugPrint("$keyword 抽出=$value");
+
+      return value;
+    }
+
+    debugPrint("$keyword 数字なし");
 
     return 0;
   }
 
   /// =========================
-  /// OpenAI分析
+  /// OpenAI分析（全店舗）
   /// =========================
   Future<void> _analyzeData() async {
     setState(() {
@@ -268,94 +304,88 @@ class _SonEkiPageState extends State<SonEkiPage> {
     });
 
     try {
-      // 登録済みPDFから最新2か月を取得
-      final months = pdfMap.keys
-          .where((e) => e.startsWith('${selectedStore}_${selectedYear}_'))
-          .map((e) => int.parse(e.split('_').last))
-          .toList();
+      final List<Map<String, dynamic>> pdfList = [];
 
-      months.sort();
+      int? latestMonth;
+      int? previousMonth;
 
-      if (months.length < 2) {
+      // =========================
+      // 全店舗PDF取得
+      // =========================
+      for (final store in stores) {
+        final months = pdfMap.keys
+            .where((e) => e.startsWith('${store}_${selectedYear}_'))
+            .map((e) => int.parse(e.split('_').last))
+            .toList();
+
+        months.sort();
+
+        if (months.length < 2) {
+          debugPrint("$store 比較PDF不足");
+          continue;
+        }
+
+        final currentMonth = months.last;
+        final previousMonthValue = months[months.length - 2];
+
+        latestMonth ??= currentMonth;
+        previousMonth ??= previousMonthValue;
+
+        final currentPath = pdfMap['${store}_${selectedYear}_$currentMonth'];
+
+        final previousPath =
+            pdfMap['${store}_${selectedYear}_$previousMonthValue'];
+
+        if (currentPath == null || previousPath == null) {
+          continue;
+        }
+
+        debugPrint("AI送信対象=$store 今月=$currentMonth 前月=$previousMonthValue");
+
+        final currentBase64 = base64Encode(
+          await File(currentPath).readAsBytes(),
+        );
+
+        final previousBase64 = base64Encode(
+          await File(previousPath).readAsBytes(),
+        );
+
+        pdfList.add({
+          "store": store,
+          "currentMonth": currentMonth,
+          "previousMonth": previousMonthValue,
+          "currentPdf": currentBase64,
+          "previousPdf": previousBase64,
+        });
+      }
+
+      if (pdfList.isEmpty) {
         setState(() {
-          analysisResult = "比較するPDFが2か月分以上登録されていません";
+          analysisResult = "比較できるPDFが2か月以上登録された店舗がありません";
           isAnalyzing = false;
         });
         return;
       }
-
-      final currentMonth = months.last;
-      final previousMonth = months[months.length - 2];
-
-      int currentSales = 0;
-      int currentProfit = 0;
-
-      int previousSales = 0;
-      int previousProfit = 0;
-
-      final List<Map<String, dynamic>> stores = [];
-
-      // ===== 今月PDF取得 =====
-
-      final currentPath =
-          pdfMap['${selectedStore}_${selectedYear}_$currentMonth'];
-
-      final previousPath =
-          pdfMap['${selectedStore}_${selectedYear}_$previousMonth'];
-
-      if (currentPath == null || previousPath == null) {
-        setState(() {
-          analysisResult = "比較するPDFがありません";
-          isAnalyzing = false;
-        });
-
-        return;
-      }
-
-      // 今月解析
-      final currentText = await _extractPdfText(currentPath);
-
-      final currentSummary = parseProfitLoss(currentText);
-
-      // 前月解析
-      final previousText = await _extractPdfText(previousPath);
-
-      final previousSummary = parseProfitLoss(previousText);
-
-      currentSales = currentSummary["salesTotal"] ?? 0;
-
-      currentProfit = currentSummary["operatingProfit"] ?? 0;
-
-      previousSales = previousSummary["salesTotal"] ?? 0;
-
-      previousProfit = previousSummary["operatingProfit"] ?? 0;
-
-      stores.add({
-        "store": selectedStore,
-
-        "sales": currentSales,
-
-        "profit": currentProfit,
-      });
 
       final bExpense = _bExpenseTotal();
 
       final payload = {
-        "currentMonth": {
-          "year": selectedYear,
-          "month": currentMonth,
-          "salesTotal": currentSales,
-          "profitTotal": currentProfit,
-        },
-        "previousMonth": {
-          "year": selectedYear,
-          "month": previousMonth,
-          "salesTotal": previousSales,
-          "profitTotal": previousProfit,
-        },
+        "type": "profit_analysis",
+
+        "year": selectedYear,
+
+        "currentMonth": latestMonth,
+        "previousMonth": previousMonth,
+
         "bExpenseTotal": bExpense,
-        "stores": stores,
+
+        "pdfs": pdfList,
       };
+
+      debugPrint("===== AI送信 =====");
+      debugPrint("店舗数=${pdfList.length}");
+
+      debugPrint("B勘定=$bExpense");
 
       final result = await analyzePdfData(payload);
 
@@ -366,6 +396,8 @@ class _SonEkiPageState extends State<SonEkiPage> {
         isAnalyzing = false;
       });
     } catch (e) {
+      debugPrint("分析エラー=$e");
+
       setState(() {
         analysisResult = "分析エラー: $e";
         isAnalyzing = false;
@@ -655,66 +687,40 @@ class _SonEkiPageState extends State<SonEkiPage> {
   }
 
   Future<String> analyzePdfData(Map<String, dynamic> payload) async {
-    final prompt =
-        '''
-以下は全店舗の損益集計データです。
+    debugPrint("===== Worker送信確認 =====");
 
-【今月】
-${jsonEncode(payload["currentMonth"])}
-
-【前月】
-${jsonEncode(payload["previousMonth"])}
-
-【店舗別】
-${jsonEncode(payload["stores"])}
-
-【B勘定管理費合計】
-${payload["bExpenseTotal"]}円
-
-以下の内容を分析してください。
-
-・全店舗売上の前月比較
-・営業利益の前月比較
-・B勘定管理費合計を差し引いた営業利益額を計算
-・差し引き後の利益が黒字か赤字かを評価
-・売上・利益の増減率
-・店舗別の好調・不調
-・改善すべき店舗
-・全体としての課題
-・今後の改善提案
-
-日本語で経営者向けに分かりやすく回答してください。
-''';
+    debugPrint("店舗数=${(payload["pdfs"] as List).length}");
 
     final response = await http.post(
       Uri.parse('https://sales-ai-worker.app-lab-nanato.workers.dev'),
+
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({"type": "profit_analysis", "prompt": prompt}),
+
+      body: jsonEncode({
+        "type": "profit_analysis",
+
+        "pdfs": payload["pdfs"],
+
+        "bExpenseTotal": payload["bExpenseTotal"],
+
+        "year": payload["year"],
+
+        "currentMonth": payload["currentMonth"],
+
+        "previousMonth": payload["previousMonth"],
+      }),
     );
 
     if (response.statusCode != 200) {
       throw Exception(response.body);
     }
 
+    debugPrint("===== Worker返答 =====");
+    debugPrint(response.body);
+
     final json = jsonDecode(response.body);
 
-    return json["analysis"];
-  }
-}
-
-Future<String> _extractPdfText(String path) async {
-  try {
-    final bytes = await File(path).readAsBytes();
-
-    final document = PdfDocument(inputBytes: bytes);
-
-    final text = PdfTextExtractor(document).extractText();
-
-    document.dispose();
-
-    return text;
-  } catch (e) {
-    return 'PDF解析失敗: $e';
+    return json["analysis"] ?? json["result"] ?? "分析結果なし";
   }
 }
 
