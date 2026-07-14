@@ -35,6 +35,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
   Map<String, dynamic> _weatherMap = {};
+  int _personnelCost = 0;
 
   int _calculateBaseDailyTarget(DateTime day) {
     int monthlyTarget = _parse(_monthlyTargetController.text);
@@ -155,6 +156,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
     });
     debugPrint('storeAddress = ${widget.storeAddress}');
     _loadWeather();
+    _loadPdfPersonnelCost();
   }
 
   void _addCommaFormat(TextEditingController controller) {
@@ -248,6 +250,23 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
 
       _weekdayWasteController.text = _weekdayWaste;
       _dayHolidayWasteController.text = _dayHolidayWaste;
+    });
+  }
+
+  Future<void> _loadPdfPersonnelCost() async {
+    final doc = await FirebaseFirestore.instance
+        .collection('pdf_analysis')
+        .doc(widget.storeName)
+        .get();
+
+    if (!doc.exists) return;
+
+    final data = doc.data();
+
+    if (data == null) return;
+
+    setState(() {
+      _personnelCost = int.tryParse(data['personnelCost'].toString()) ?? 0;
     });
   }
 
@@ -436,7 +455,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
     int wasteRate = _calculateWasteRate(dailyWaste);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('店舗データ詳細')),
+      appBar: AppBar(title: const Text('店舗詳細＋人件費')),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -643,6 +662,26 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
                     ),
                   );
                 },
+              ),
+              // 最新PDF 人件費
+              Card(
+                color: Colors.green[50],
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      const Text(
+                        '最新PDF 人件費',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${formatter.format(_personnelCost)} 円',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               Card(
                 child: Row(

@@ -197,7 +197,11 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
 
       await _saveAnalysis(content);
 
-      await _saveAnalysis(content);
+      // PDF解析結果をFirestore保存
+      await FirebaseFirestore.instance
+          .collection('pdf_analysis')
+          .doc(widget.store)
+          .set({'analysis': content, 'updatedAt': Timestamp.now()});
     } catch (e) {
       setState(() {
         pdfAnalysisResult = "例外エラー: $e";

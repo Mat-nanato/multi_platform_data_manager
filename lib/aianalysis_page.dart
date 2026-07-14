@@ -199,6 +199,77 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
     return data;
   }
 
+  Future<String> _getCampaignText() async {
+    try {
+      final res = await http.get(
+        Uri.parse("https://sales-ai-worker.app-lab-nanato.workers.dev/famima"),
+      );
+
+      if (res.statusCode != 200) {
+        return "";
+      }
+
+      final data = jsonDecode(utf8.decode(res.bodyBytes));
+
+      final campaigns = data["campaigns"];
+
+      if (campaigns is List) {
+        return campaigns.join("\n");
+      }
+
+      return campaigns.toString();
+    } catch (e) {
+      logger.e("キャンペーン取得失敗", error: e);
+      return "";
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadOtherStoreOrders() async {
+    final stores = [
+      '東勝山二丁目店',
+      '上杉一丁目店',
+      '仙台木町通一丁目店',
+      '安養寺二丁目店',
+      '利府青山店',
+      '電力ビル店',
+      '中山台店',
+    ];
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('daily_data')
+        .get();
+
+    final result = <Map<String, dynamic>>[];
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+
+      if (!stores.contains(data['store'])) {
+        continue;
+      }
+
+      result.add({
+        "store": data["store"],
+
+        "orders": {
+          "おむすび": data["おむすび発注金額"],
+          "寿司": data["寿司発注金額"],
+          "定温弁当": data["定温弁当発注金額"],
+          "チルド弁当": data["チルド弁当発注金額"],
+          "サンドイッチ": data["サンドイッチ発注金額"],
+          "パスタ": data["パスタ発注金額"],
+          "サラダ": data["サラダ発注金額"],
+          "菓子パン": data["菓子パン発注金額"],
+          "惣菜パン": data["惣菜パン発注金額"],
+          "食パン": data["食パンマルチパン発注金額"],
+          "FF": data["FF発注金額"],
+        },
+      });
+    }
+
+    return result;
+  }
+
   String _getWeekday(DateTime date) {
     const w = ['月', '火', '水', '木', '金', '土', '日'];
     return w[date.weekday - 1];
@@ -305,11 +376,14 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   }
 
   Future<void> _analyze() async {
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+    });
 
     try {
       final history = await _loadHistory();
-
+      final campaignText = await _getCampaignText();
+      final allStoreOrders = await _loadOtherStoreOrders();
       final storeInfo = storeInfoMap[widget.store];
 
       if (storeInfo == null) {
@@ -506,7 +580,15 @@ temperature単独より優先して判断すること。
 発注理由は気温・曜日・祝日・イベント・過去実績を考慮して記載してください。
 """,
             },
-            {"role": "user", "content": jsonEncode(enriched)},
+            {
+              "role": "user",
+              "content": jsonEncode({
+                "targetStore": widget.store,
+                "history": enriched,
+                "campaigns": campaignText,
+                "otherStores": allStoreOrders,
+              }),
+            },
           ],
         }),
       );
@@ -700,7 +782,7 @@ temperature単独より優先して判断すること。
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('発注AI')),
+      appBar: AppBar(title: const Text('発注AI[ランキング]')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
