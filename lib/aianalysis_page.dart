@@ -10,6 +10,7 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'pdf_analysis_page.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PdfListPage extends StatelessWidget {
   final int month;
@@ -84,6 +85,30 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   bool pdfLoading = false;
   bool loading = false;
   String result = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadResult();
+  }
+
+  Future<void> _loadResult() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final saved = prefs.getString('ai_order_result_${widget.store}');
+
+    if (saved != null && mounted) {
+      setState(() {
+        result = saved;
+      });
+    }
+  }
+
+  Future<void> _saveResult(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString('ai_order_result_${widget.store}', value);
+  }
 
   Future<Set<int>> _getImportedMonths() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -499,7 +524,12 @@ temperature単独より優先して判断すること。
       }
 
       final data = jsonDecode(decoded);
-      final content = data['analysis'] ?? "解析結果なし";
+
+      logger.i("RESPONSE KEYS");
+      logger.i(data.keys);
+
+      final content =
+          data['analysis'] ?? data['choices']?[0]?['message']?['content'] ?? "";
 
       logger.i("CONTENT TYPE");
       logger.i(content.runtimeType);
@@ -512,6 +542,13 @@ temperature単独より優先して判断すること。
             .replaceAll('```json', '')
             .replaceAll('```', '')
             .trim();
+
+        final start = cleaned.indexOf('{');
+        final end = cleaned.lastIndexOf('}');
+
+        if (start >= 0 && end >= 0) {
+          cleaned = cleaned.substring(start, end + 1);
+        }
 
         final orderJson = jsonDecode(cleaned) as Map<String, dynamic>;
 
@@ -542,6 +579,8 @@ temperature単独より優先して判断すること。
           result = formatted;
           loading = false;
         });
+
+        await _saveResult(formatted);
       } catch (e, st) {
         logger.e("JSON PARSE ERROR", error: e, stackTrace: st);
 

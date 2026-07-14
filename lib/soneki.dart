@@ -7,6 +7,8 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
 
 class SonEkiPage extends StatefulWidget {
   const SonEkiPage({super.key});
@@ -25,6 +27,24 @@ class _SonEkiPageState extends State<SonEkiPage> {
     '電力ビル店',
     '中山台店',
   ];
+
+  int depreciationCount = 1;
+  int managerCount = 0;
+  int storeManagerCount = 0;
+  int employeeManageCount = 0;
+  int welfareCount = 0;
+  int retirementCount = 1;
+  int transportCount = 0;
+
+  int _bExpenseTotal() {
+    return depreciationCount * 100000 +
+        managerCount * 400000 +
+        storeManagerCount * 250000 +
+        employeeManageCount * 80000 +
+        welfareCount * 88888 +
+        retirementCount * 10000 +
+        transportCount * 50000;
+  }
 
   final List<int> years = List.generate(6, (i) => DateTime.now().year - 3 + i);
 
@@ -51,17 +71,38 @@ class _SonEkiPageState extends State<SonEkiPage> {
   /// PDFデータ読み込み
   /// =========================
   Future<void> _loadPdfData() async {
-    final doc = await _firestore.collection('soneki_pdf').doc('default').get();
+    final dir = await getApplicationDocumentsDirectory();
 
-    if (doc.exists && doc.data() != null) {
-      final data = doc.data()!;
-      final raw = data['pdfMap'];
+    final files = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.pdf'))
+        .toList();
 
-      if (raw != null) {
-        pdfMap = Map<String, String>.from(raw);
+    for (final file in files) {
+      final name = file.path.split('/').last;
+
+      final reg = RegExp(r'_(\d{6})_');
+
+      final match = reg.firstMatch(name);
+
+      if (match == null) continue;
+
+      final ym = match.group(1)!;
+
+      final year = int.parse(ym.substring(0, 4));
+
+      final month = int.parse(ym.substring(4, 6));
+
+      // 店舗コードから店舗名取得
+      for (final store in stores) {
+        final code = getStoreCode(store);
+
+        if (name.contains(code)) {
+          pdfMap['${store}_${year}_$month'] = file.path;
+        }
       }
     }
-
     setState(() {});
   }
 
@@ -103,11 +144,11 @@ class _SonEkiPageState extends State<SonEkiPage> {
         .collection('soneki_analysis')
         .doc('${selectedStore}_$selectedYear')
         .set({
-      'store': selectedStore,
-      'year': selectedYear,
-      'result': result,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+          'store': selectedStore,
+          'year': selectedYear,
+          'result': result,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
   }
 
   /// =========================
@@ -128,6 +169,20 @@ class _SonEkiPageState extends State<SonEkiPage> {
     // PDF文字抽出
     final pdfText = await _extractPdfText(path);
 
+    final summary = parseProfitLoss(pdfText);
+
+    // Firestoreへ保存
+    await _firestore
+        .collection("profit_summary")
+        .doc("${selectedStore}_${selectedYear}_$month")
+        .set({
+          "store": selectedStore,
+          "year": selectedYear,
+          "month": month,
+          ...summary,
+          "updatedAt": FieldValue.serverTimestamp(),
+        });
+
     debugPrint(pdfText);
     if (!mounted) return;
     // PDF表示画面
@@ -135,12 +190,8 @@ class _SonEkiPageState extends State<SonEkiPage> {
       context,
       MaterialPageRoute(
         builder: (_) => Scaffold(
-          appBar: AppBar(
-            title: const Text('PDF表示'),
-          ),
-          body: SfPdfViewer.file(
-            File(path),
-          ),
+          appBar: AppBar(title: const Text('PDF表示')),
+          body: SfPdfViewer.file(File(path)),
         ),
       ),
     );
@@ -150,8 +201,8 @@ class _SonEkiPageState extends State<SonEkiPage> {
     final file = File(path);
 
     final storageRef = _storage.ref().child(
-          'soneki_pdf/$selectedStore/$selectedYear/$month.pdf',
-        );
+      'soneki_pdf/$selectedStore/$selectedYear/$month.pdf',
+    );
 
     await storageRef.putFile(file);
 
@@ -164,6 +215,34 @@ class _SonEkiPageState extends State<SonEkiPage> {
     setState(() {});
   }
 
+  Map<String, dynamic> parseProfitLoss(String text) {
+    return {
+      "salesTotal": _findValueByLine(text, "売上高合計"),
+      "operatingProfit": _findValueByLine(text, "営業利益"),
+      "grossProfit": _findValueByLine(text, "営業総利益"),
+      "totalIncome": _findValueByLine(text, "総収入"),
+      "employeeSalary": _findValueByLine(text, "従業員給与"),
+    };
+  }
+
+  int _findValueByLine(String text, String keyword) {
+    final lines = text.split('\n');
+
+    for (final line in lines) {
+      final normalized = line.replaceAll(' ', '').replaceAll('　', '');
+
+      if (normalized.contains(keyword)) {
+        final match = RegExp(r'[\d,]+').firstMatch(line);
+
+        if (match != null) {
+          return int.parse(match.group(0)!.replaceAll(',', ''));
+        }
+      }
+    }
+
+    return 0;
+  }
+
   /// =========================
   /// OpenAI分析
   /// =========================
@@ -173,33 +252,81 @@ class _SonEkiPageState extends State<SonEkiPage> {
     });
 
     try {
-      final List<Map<String, dynamic>> yearlyData = [];
+      final currentMonth = DateTime.now().month;
+      final previousMonth = currentMonth - 1;
 
-      for (int month = 1; month <= 12; month++) {
-        final key = '${selectedStore}_${selectedYear}_$month';
+      final currentSnapshot = await _firestore
+          .collection("profit_summary")
+          .where("year", isEqualTo: selectedYear)
+          .where("month", isEqualTo: currentMonth)
+          .get();
 
-        final pdfUrl = pdfMap[key];
+      final previousSnapshot = await _firestore
+          .collection("profit_summary")
+          .where("year", isEqualTo: selectedYear)
+          .where("month", isEqualTo: previousMonth)
+          .get();
 
-        if (pdfUrl == null) continue;
-
-        yearlyData.add({
-          'month': month,
-          'pdfUrl': pdfUrl,
-        });
-      }
-
-      if (yearlyData.isEmpty) {
+      if (currentSnapshot.docs.isEmpty || previousSnapshot.docs.isEmpty) {
         setState(() {
-          analysisResult = 'PDFが登録されていません';
+          analysisResult = "今月または先月のデータがありません";
           isAnalyzing = false;
         });
-
         return;
       }
 
-      final result = await analyzePdfData(yearlyData);
+      int currentSales = 0;
+      int currentProfit = 0;
 
-      /// 保存
+      int previousSales = 0;
+      int previousProfit = 0;
+
+      final List<Map<String, dynamic>> stores = [];
+
+      for (final doc in currentSnapshot.docs) {
+        final data = doc.data();
+
+        currentSales += (data["salesTotal"] ?? 0) as int;
+        currentProfit += (data["operatingProfit"] ?? 0) as int;
+
+        stores.add({
+          "store": data["store"],
+          "sales": data["salesTotal"],
+          "profit": data["operatingProfit"],
+        });
+      }
+
+      for (final doc in previousSnapshot.docs) {
+        final data = doc.data();
+
+        previousSales += (data["salesTotal"] ?? 0) as int;
+        previousProfit += (data["operatingProfit"] ?? 0) as int;
+      }
+
+      final payload = {
+        "currentMonth": {
+          "year": selectedYear,
+          "month": currentMonth,
+          "salesTotal": currentSales,
+          "profitTotal": currentProfit,
+        },
+        "previousMonth": {
+          "year": selectedYear,
+          "month": previousMonth,
+          "salesTotal": previousSales,
+          "profitTotal": previousProfit,
+        },
+        "stores": stores,
+      };
+
+      final result = await analyzePdfData(payload);
+
+      await _saveAnalysisResult(result);
+
+      setState(() {
+        analysisResult = result;
+        isAnalyzing = false;
+      });
       await _saveAnalysisResult(result);
 
       setState(() {
@@ -208,7 +335,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
       });
     } catch (e) {
       setState(() {
-        analysisResult = '分析エラー: $e';
+        analysisResult = "分析エラー: $e";
         isAnalyzing = false;
       });
     }
@@ -227,14 +354,26 @@ class _SonEkiPageState extends State<SonEkiPage> {
     return Card(
       child: ListTile(
         title: Text('$month 月'),
-        subtitle: Text(
-          exists ? 'PDF登録済み' : 'PDF未登録',
-        ),
+        subtitle: Text(exists ? 'PDF登録済み' : 'PDF未登録'),
         trailing: ElevatedButton(
-          onPressed: () => _pickPdf(month),
-          child: Text(
-            exists ? '変更' : '追加',
-          ),
+          onPressed: () async {
+            final path = pdfMap[key];
+
+            if (path != null) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: Text('$month月PDF')),
+                    body: SfPdfViewer.file(File(path)),
+                  ),
+                ),
+              );
+            } else {
+              await _pickPdf(month);
+            }
+          },
+          child: Text(exists ? '変更' : '追加'),
         ),
       ),
     );
@@ -246,9 +385,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('損益書+分析結果'),
-      ),
+      appBar: AppBar(title: const Text('損益書+分析結果')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -261,10 +398,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
                 DropdownButton<String>(
                   value: selectedStore,
                   items: stores.map((store) {
-                    return DropdownMenuItem(
-                      value: store,
-                      child: Text(store),
-                    );
+                    return DropdownMenuItem(value: store, child: Text(store));
                   }).toList(),
                   onChanged: (value) async {
                     if (value == null) return;
@@ -289,10 +423,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
                 DropdownButton<int>(
                   value: selectedYear,
                   items: years.map((year) {
-                    return DropdownMenuItem(
-                      value: year,
-                      child: Text('$year年'),
-                    );
+                    return DropdownMenuItem(value: year, child: Text('$year年'));
                   }).toList(),
                   onChanged: (value) async {
                     if (value == null) return;
@@ -313,9 +444,79 @@ class _SonEkiPageState extends State<SonEkiPage> {
               child: ListView(
                 children: [
                   /// 月一覧
-                  ...List.generate(
-                    12,
-                    (index) => _buildMonthCard(index + 1),
+                  ...List.generate(12, (index) => _buildMonthCard(index + 1)),
+
+                  const SizedBox(height: 20),
+
+                  /// B勘定管理費入力
+                  _buildBExpenseRow('減価償却', '店舗', 100000, depreciationCount, (
+                    v,
+                  ) {
+                    setState(() {
+                      depreciationCount = v;
+                    });
+                  }),
+
+                  _buildBExpenseRow('管理者', '名', 400000, managerCount, (v) {
+                    setState(() {
+                      managerCount = v;
+                    });
+                  }),
+
+                  _buildBExpenseRow('店長数', '名', 250000, storeManagerCount, (v) {
+                    setState(() {
+                      storeManagerCount = v;
+                    });
+                  }),
+
+                  _buildBExpenseRow('社員管理費', '名', 80000, employeeManageCount, (
+                    v,
+                  ) {
+                    setState(() {
+                      employeeManageCount = v;
+                    });
+                  }),
+
+                  _buildBExpenseRow('法定福利・社会保険料', '名', 88888, welfareCount, (
+                    v,
+                  ) {
+                    setState(() {
+                      welfareCount = v;
+                    });
+                  }),
+
+                  _buildBExpenseRow('退職金積立金', '店舗', 10000, retirementCount, (
+                    v,
+                  ) {
+                    setState(() {
+                      retirementCount = v;
+                    });
+                  }),
+
+                  _buildBExpenseRow('移動交通費', '名', 50000, transportCount, (v) {
+                    setState(() {
+                      transportCount = v;
+                    });
+                  }),
+
+                  const SizedBox(height: 10),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      const Text(
+                        'B勘定管理費合計 ',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+
+                      Text(
+                        '${NumberFormat("#,###").format(_bExpenseTotal())}円',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 20),
@@ -323,9 +524,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
                   /// 分析ボタン
                   ElevatedButton(
                     onPressed: isAnalyzing ? null : _analyzeData,
-                    child: Text(
-                      isAnalyzing ? '分析中...' : '分析結果',
-                    ),
+                    child: Text(isAnalyzing ? '分析中...' : '分析結果'),
                   ),
 
                   const SizedBox(height: 20),
@@ -335,9 +534,7 @@ class _SonEkiPageState extends State<SonEkiPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey,
-                      ),
+                      border: Border.all(color: Colors.grey),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -355,56 +552,104 @@ class _SonEkiPageState extends State<SonEkiPage> {
     );
   }
 
-  Future<String> analyzePdfData(
-    List<Map<String, dynamic>> pdfData,
-  ) async {
-    final prompt = '''
-以下の損益データ推移を分析してください。
+  Widget _buildBExpenseRow(
+    String title,
+    String unit,
+    int price,
+    int count,
+    Function(int) onChanged,
+  ) {
+    final total = count * price;
 
-分析内容:
-・商品総売上高
-・営業収入
-・売上高合計
-・店舗値下・廃棄ロス原価高
-・棚卸増減原価高
-・営業総利益
-・本部フィー
-・分担金・助成金・支援金
-・補填金
-・販売奨励金
-・雑収入
-・総収入
-・従業員給与
-・募集費
-・用度品代
-・修繕費（含保守料）
-・水道光熱費
-・清掃費
-・営業雑費
-・現金過不足
-・営業費合計
-・営業利益
-・引出金
-・配分金
-・営業利益残高
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
 
-データ:
-${jsonEncode(pdfData)}
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 150,
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
 
-日本語で簡潔に出力してください。
+              DropdownButton<int>(
+                value: count,
+
+                items: List.generate(20, (index) {
+                  return DropdownMenuItem(
+                    value: index,
+                    child: Text('$index$unit'),
+                  );
+                }),
+
+                onChanged: (value) {
+                  if (value == null) return;
+
+                  onChanged(value);
+                },
+              ),
+
+              const SizedBox(width: 8),
+
+              Expanded(
+                child: Text('× ¥${NumberFormat("#,###").format(price)}'),
+              ),
+            ],
+          ),
+
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '= ${NumberFormat("#,###").format(total)}円',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String> analyzePdfData(Map<String, dynamic> payload) async {
+    final prompt =
+        '''
+以下は全店舗の損益集計データです。
+
+【今月】
+${jsonEncode(payload["currentMonth"])}
+
+【前月】
+${jsonEncode(payload["previousMonth"])}
+
+【店舗別】
+${jsonEncode(payload["stores"])}
+
+以下の内容を分析してください。
+
+・全店舗売上の前月比較
+・営業利益の前月比較
+・売上・利益の増減率
+・店舗別の好調・不調
+・改善すべき店舗
+・全体としての課題
+・今後の改善提案
+
+日本語で経営者向けに分かりやすく回答してください。
 ''';
 
     final response = await http.post(
-      Uri.parse(
-        'https://sales-ai-worker.app-lab-nanato.workers.dev',
-      ),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'prompt': prompt,
-      }),
-    );
+  Uri.parse('https://sales-ai-worker.app-lab-nanato.workers.dev'),
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: jsonEncode({
+    "type": "profit_analysis",
+    "prompt": prompt,
+  }),
+);
 
     if (response.statusCode != 200) {
       throw Exception(response.body);
@@ -412,7 +657,7 @@ ${jsonEncode(pdfData)}
 
     final json = jsonDecode(response.body);
 
-    return json['choices'][0]['message']['content'];
+return json["analysis"];
   }
 }
 
@@ -420,18 +665,42 @@ Future<String> _extractPdfText(String path) async {
   try {
     final bytes = await File(path).readAsBytes();
 
-    final document = PdfDocument(
-      inputBytes: bytes,
-    );
+    final document = PdfDocument(inputBytes: bytes);
 
-    final text = PdfTextExtractor(
-      document,
-    ).extractText();
+    final text = PdfTextExtractor(document).extractText();
 
     document.dispose();
 
     return text;
   } catch (e) {
     return 'PDF解析失敗: $e';
+  }
+}
+
+String getStoreCode(String storeName) {
+  switch (storeName) {
+    case '東勝山二丁目店':
+      return '61685';
+
+    case '上杉一丁目店':
+      return '61780';
+
+    case '仙台木町通一丁目店':
+      return '25658';
+
+    case '安養寺二丁目店':
+      return '61987';
+
+    case '利府青山店':
+      return '62012';
+
+    case '電力ビル店':
+      return '62060';
+
+    case '中山台店':
+      return '62219';
+
+    default:
+      return '';
   }
 }

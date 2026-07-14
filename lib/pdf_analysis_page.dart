@@ -178,9 +178,6 @@ class _PdfAnalysisPageState extends State<PdfAnalysisPage> {
 
       final data = jsonDecode(decoded);
 
-      print("WORKER RESPONSE:");
-      print(data);
-
       String content;
 
       if (data['choices'] != null) {
