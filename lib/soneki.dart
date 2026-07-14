@@ -109,16 +109,6 @@ class _SonEkiPageState extends State<SonEkiPage> {
   }
 
   /// =========================
-  /// PDFデータ保存
-  /// =========================
-  Future<void> _savePdfData() async {
-    await _firestore.collection('soneki_pdf').doc('default').set({
-      'pdfMap': pdfMap,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
-  /// =========================
   /// 分析結果読み込み
   /// =========================
   Future<void> _loadAnalysisResult() async {
@@ -238,8 +228,6 @@ class _SonEkiPageState extends State<SonEkiPage> {
 
     pdfMap[key] = downloadUrl;
 
-    await _savePdfData();
-
     setState(() {});
   }
 
@@ -299,26 +287,6 @@ class _SonEkiPageState extends State<SonEkiPage> {
       final currentMonth = months.last;
       final previousMonth = months[months.length - 2];
 
-      final currentSnapshot = await _firestore
-          .collection("profit_summary")
-          .where("year", isEqualTo: selectedYear)
-          .where("month", isEqualTo: currentMonth)
-          .get();
-
-      final previousSnapshot = await _firestore
-          .collection("profit_summary")
-          .where("year", isEqualTo: selectedYear)
-          .where("month", isEqualTo: previousMonth)
-          .get();
-
-      if (currentSnapshot.docs.isEmpty || previousSnapshot.docs.isEmpty) {
-        setState(() {
-          analysisResult = "$currentMonth月または$previousMonth月の損益データがありません";
-          isAnalyzing = false;
-        });
-        return;
-      }
-
       int currentSales = 0;
       int currentProfit = 0;
 
@@ -327,25 +295,48 @@ class _SonEkiPageState extends State<SonEkiPage> {
 
       final List<Map<String, dynamic>> stores = [];
 
-      for (final doc in currentSnapshot.docs) {
-        final data = doc.data();
+      // ===== 今月PDF取得 =====
 
-        currentSales += (data["salesTotal"] ?? 0) as int;
-        currentProfit += (data["operatingProfit"] ?? 0) as int;
+      final currentPath =
+          pdfMap['${selectedStore}_${selectedYear}_$currentMonth'];
 
-        stores.add({
-          "store": data["store"],
-          "sales": data["salesTotal"],
-          "profit": data["operatingProfit"],
+      final previousPath =
+          pdfMap['${selectedStore}_${selectedYear}_$previousMonth'];
+
+      if (currentPath == null || previousPath == null) {
+        setState(() {
+          analysisResult = "比較するPDFがありません";
+          isAnalyzing = false;
         });
+
+        return;
       }
 
-      for (final doc in previousSnapshot.docs) {
-        final data = doc.data();
+      // 今月解析
+      final currentText = await _extractPdfText(currentPath);
 
-        previousSales += (data["salesTotal"] ?? 0) as int;
-        previousProfit += (data["operatingProfit"] ?? 0) as int;
-      }
+      final currentSummary = parseProfitLoss(currentText);
+
+      // 前月解析
+      final previousText = await _extractPdfText(previousPath);
+
+      final previousSummary = parseProfitLoss(previousText);
+
+      currentSales = currentSummary["salesTotal"] ?? 0;
+
+      currentProfit = currentSummary["operatingProfit"] ?? 0;
+
+      previousSales = previousSummary["salesTotal"] ?? 0;
+
+      previousProfit = previousSummary["operatingProfit"] ?? 0;
+
+      stores.add({
+        "store": selectedStore,
+
+        "sales": currentSales,
+
+        "profit": currentProfit,
+      });
 
       final bExpense = _bExpenseTotal();
 
