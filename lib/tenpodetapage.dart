@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 final formatter = NumberFormat('#,###');
 
@@ -137,8 +138,11 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
   }
 
   @override
+  @override
   void initState() {
     super.initState();
+
+    initializeDateFormatting('ja_JP');
 
     _addCommaFormat(_monthlyTargetController);
     _addCommaFormat(_monthlyWasteController);
@@ -495,6 +499,7 @@ class _TenpoDataPageState extends State<TenpoDataPage> {
               Container(
                 color: Colors.blue[50],
                 child: TableCalendar(
+                  locale: 'ja_JP',
                   rowHeight: 80,
                   firstDay: DateTime.utc(2020, 1, 1),
                   lastDay: DateTime.utc(2030, 12, 31),

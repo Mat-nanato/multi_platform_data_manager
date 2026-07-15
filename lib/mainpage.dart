@@ -65,7 +65,12 @@ class _MainPageState extends State<MainPage> {
   void loadNewProducts() =>
       _webController.loadRequest(Uri.parse(newProductsUrl));
   void loadCampaigns() => _webController.loadRequest(Uri.parse(campaignsUrl));
-  void loadCalendar() => _webController.loadRequest(Uri.parse(calendarUrl));
+  void loadCalendar() {
+    _webController.loadRequest(
+      Uri.parse(calendarUrl),
+      headers: {'Accept-Language': 'ja-JP,ja;q=0.9'},
+    );
+  }
 
   Future<void> fetchChatOrImage(String prompt) async {
     const workerUrl = 'https://sales-ai-worker.app-lab-nanato.workers.dev';

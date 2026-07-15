@@ -353,26 +353,92 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
     return e;
   }
 
-  Future<Map<String, dynamic>> _fetchPastWeather(String date) async {
-    const lat = 38.2682;
-    const lon = 140.8694;
+  Future<Map<String, dynamic>> _fetchFutureWeather(
+    double lat,
+    double lon,
+  ) async {
+    final today = DateTime.now();
+
+    final dates = List.generate(7, (i) => today.add(Duration(days: i)))
+        .map(
+          (d) =>
+              "${d.year.toString().padLeft(4, '0')}-"
+              "${d.month.toString().padLeft(2, '0')}-"
+              "${d.day.toString().padLeft(2, '0')}",
+        )
+        .toList();
 
     final url =
-        "https://archive-api.open-meteo.com/v1/archive?latitude=$lat&longitude=$lon&start_date=$date&end_date=$date&daily=temperature_2m_mean,weathercode&timezone=Asia%2FTokyo";
+        "https://api.open-meteo.com/v1/forecast?"
+        "latitude=$lat"
+        "&longitude=$lon"
+        "&start_date=${dates.first}"
+        "&end_date=${dates.last}"
+        "&daily=temperature_2m_mean,weathercode"
+        "&timezone=Asia%2FTokyo";
 
     final res = await http.get(Uri.parse(url));
-    final body = utf8.decode(res.bodyBytes);
 
     if (res.statusCode != 200) {
       throw Exception("天気取得失敗");
     }
 
-    final data = jsonDecode(body);
+    final data = jsonDecode(utf8.decode(res.bodyBytes));
 
-    return {
-      "temp": data["daily"]["temperature_2m_mean"][0],
-      "code": data["daily"]["weathercode"][0],
-    };
+    final temps = data["daily"]["temperature_2m_mean"];
+    final codes = data["daily"]["weathercode"];
+
+    final result = <String, Map<String, dynamic>>{};
+
+    for (int i = 0; i < dates.length; i++) {
+      result[dates[i]] = {
+        "temp": (temps[i] as num).toDouble(),
+        "code": codes[i],
+      };
+    }
+
+    logger.i("天気一括取得 ${result.length}件");
+
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _fetchWeatherHistory(
+    List<String> dates,
+    double lat,
+    double lon,
+  ) async {
+    final url =
+        "https://archive-api.open-meteo.com/v1/archive?"
+        "latitude=$lat"
+        "&longitude=$lon"
+        "&start_date=${dates.first}"
+        "&end_date=${dates.last}"
+        "&daily=temperature_2m_mean,weathercode"
+        "&timezone=Asia%2FTokyo";
+
+    final res = await http.get(Uri.parse(url));
+
+    if (res.statusCode != 200) {
+      throw Exception("過去天気取得失敗");
+    }
+
+    final data = jsonDecode(utf8.decode(res.bodyBytes));
+
+    final temps = data["daily"]["temperature_2m_mean"];
+    final codes = data["daily"]["weathercode"];
+
+    final result = <String, Map<String, dynamic>>{};
+
+    for (int i = 0; i < dates.length; i++) {
+      result[dates[i]] = {
+        "temp": (temps[i] as num).toDouble(),
+        "code": codes[i],
+      };
+    }
+
+    logger.i("過去天気取得 ${result.length}件");
+
+    return result;
   }
 
   Future<void> _analyze() async {
@@ -382,13 +448,25 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
 
     try {
       final history = await _loadHistory();
+
+      final recentHistory = history.length > 45
+          ? history.sublist(history.length - 45)
+          : history;
+
       final campaignText = await _getCampaignText();
-      final allStoreOrders = await _loadOtherStoreOrders();
+
+      final otherStoreOrders = await _loadOtherStoreOrders();
+
       final storeInfo = storeInfoMap[widget.store];
 
       if (storeInfo == null) {
         throw Exception('店舗情報が見つかりません: ${widget.store}');
       }
+
+      final futureWeather = await _fetchFutureWeather(
+        storeInfo.lat,
+        storeInfo.lon,
+      );
 
       final wikiEvents = await _fetchWikiEvents(storeInfo.lat, storeInfo.lon);
 
@@ -402,20 +480,30 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
 
       List<Map<String, dynamic>> enriched = [];
 
+      final weatherDates = recentHistory
+          .map((e) => e["date"].toString().substring(0, 10))
+          .toList();
+
+      final weatherMap = await _fetchWeatherHistory(
+        weatherDates,
+        storeInfo.lat,
+        storeInfo.lon,
+      );
       double? prevTemp;
 
-      for (final d in history) {
+      for (final d in recentHistory) {
         final dateStr = d["date"].toString().substring(0, 10);
         final date = DateTime.parse(dateStr);
 
-        final w = await _fetchPastWeather(dateStr);
+        final w = weatherMap[dateStr]!;
         final temp = (w["temp"] as num).toDouble();
 
         double diff = 0;
         bool big = false;
 
         if (prevTemp != null) {
-          diff = temp - prevTemp; // ← !削除
+          diff = temp - prevTemp;
+
           if (diff.abs() >= 5) {
             big = true;
           }
@@ -585,8 +673,9 @@ temperature単独より優先して判断すること。
               "content": jsonEncode({
                 "targetStore": widget.store,
                 "history": enriched,
+                "futureWeather": futureWeather,
                 "campaigns": campaignText,
-                "otherStores": allStoreOrders,
+                "otherStores": otherStoreOrders,
               }),
             },
           ],
